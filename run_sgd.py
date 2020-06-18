@@ -34,7 +34,9 @@ if __name__ == '__main__':
 
     if args.enable_wdc:
         model.train_model('data/sgd/wdc.json')
+        modelName = "sgd_%s_%s_wdc" % (args.eval_mode, "bert")
 
+    #
     model.train_model('data/sgd/sgd-train-%s.json' % args.eval_mode)
     # result, out = model.eval_model('data/sgd/sgd-dev-%s.json' % args.eval_mode)
     result, out = model.eval_model('data/sgd/sgd-test-%s.json' % args.eval_mode)
