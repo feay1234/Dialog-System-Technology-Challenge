@@ -33,13 +33,14 @@ if __name__ == '__main__':
     model = QuestionAnsweringModel('bert', 'bert-base-uncased', use_cuda=args.use_cuda, args={'reprocess_input_data': True, 'overwrite_output_dir': True})
     modelName = "sgd_%s_%s" % (args.eval_mode, "bert")
 
-    if args.enable_wdc:
-        model.train_model('data/sgd/wdc.json')
-        modelName = "sgd_%s_%s_wdc" % (args.eval_mode, "bert")
 
     #
     best_acc = 0
     for epoch in range(args.epoch_nb):
+        
+        if args.enable_wdc:
+            model.train_model('data/sgd/wdc.json')
+            modelName = "sgd_%s_%s_wdc" % (args.eval_mode, "bert")
 
         model.train_model('data/sgd/sgd-train-%s.json' % args.eval_mode)
         # result, out = model.eval_model('data/sgd/sgd-dev-%s.json' % args.eval_mode)
