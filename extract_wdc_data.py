@@ -50,7 +50,6 @@ for file in files:
                 #     continue
                 # print(l)
                 # print(p)
-                print(val)
                 if p not in memo[website]:
                     memo[website][p] = val
         except:
