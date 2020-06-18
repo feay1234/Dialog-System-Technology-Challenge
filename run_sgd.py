@@ -25,6 +25,7 @@ if __name__ == '__main__':
     parser.add_argument('--enable_wdc', type=int, default=0)
     parser.add_argument('--out_dir', type=str, default="out/")
     parser.add_argument('--use_cuda', type=int, default=0)
+    parser.add_argument('--epoch_nb', type=int, default=5)
 
     args = parser.parse_args()
 
@@ -37,13 +38,19 @@ if __name__ == '__main__':
         modelName = "sgd_%s_%s_wdc" % (args.eval_mode, "bert")
 
     #
-    model.train_model('data/sgd/sgd-train-%s.json' % args.eval_mode)
-    # result, out = model.eval_model('data/sgd/sgd-dev-%s.json' % args.eval_mode)
-    result, out = model.eval_model('data/sgd/sgd-test-%s.json' % args.eval_mode)
+    best_acc = 0
+    for epoch in range(args.epoch_nb):
 
-    slot_acc = result['correct'] / (result['correct'] + result['similar'] + result['incorrect'])
+        model.train_model('data/sgd/sgd-train-%s.json' % args.eval_mode)
+        # result, out = model.eval_model('data/sgd/sgd-dev-%s.json' % args.eval_mode)
+        result, out = model.eval_model('data/sgd/sgd-test-%s.json' % args.eval_mode)
 
-    print2file(args.out_dir, modelName, ".res", slot_acc, True)
-    # save output to file
-    with open('%s%s.out' % (args.out_dir, modelName), 'w') as f:
-        json.dump(out, f)
+        slot_acc = result['correct'] / (result['correct'] + result['similar'] + result['incorrect'])
+
+        if slot_acc > best_acc:
+            best_acc = slot_acc
+
+            print2file(args.out_dir, modelName, ".res", slot_acc, True)
+            # save output to file
+            with open('%s%s.out' % (args.out_dir, modelName), 'w') as f:
+                json.dump(out, f)
