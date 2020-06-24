@@ -82,7 +82,7 @@ def main(args):
     print("# train examples %d" % len(train_data_raw))
 
     if os.path.exists(args.dev_data_path + ".pk"):
-        train_data_raw = load_data(args.dev_data_path + ".pk")
+        dev_data_raw = load_data(args.dev_data_path + ".pk")
     else:
         dev_data_raw = prepare_dataset(data_path=args.dev_data_path,
                                        tokenizer=tokenizer,
@@ -93,7 +93,7 @@ def main(args):
     print("# dev examples %d" % len(dev_data_raw))
 
     if os.path.exists(args.test_data_path + ".pk"):
-        train_data_raw = load_data(args.test_data_path + ".pk")
+        test_data_raw = load_data(args.test_data_path + ".pk")
     else:
         test_data_raw = prepare_dataset(data_path=args.test_data_path,
                                         tokenizer=tokenizer,
