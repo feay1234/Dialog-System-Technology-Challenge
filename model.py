@@ -93,7 +93,6 @@ class Decoder(nn.Module):
         self.embed = nn.Embedding(config.vocab_size, config.hidden_size, padding_idx=self.pad_idx)
         self.embed.weight = bert_model_embedding_weights
         self.gru = nn.GRU(config.hidden_size, config.hidden_size, 1, batch_first=True)
-        self.gru.flatten_parameters()
         self.w_gen = nn.Linear(config.hidden_size*3, 1)
         self.sigmoid = nn.Sigmoid()
         self.dropout = nn.Dropout(config.dropout)
@@ -113,6 +112,7 @@ class Decoder(nn.Module):
             slot_value = []
             for k in range(max_len):
                 w = self.dropout(w)
+                self.gru.flatten_parameters()
                 _, hidden = self.gru(w, hidden)  # 1,B,D
                 # B,T,D * B,D,1 => B,T
                 attn_e = torch.bmm(encoder_output, hidden.permute(1, 2, 0))  # B,T,1
