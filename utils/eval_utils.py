@@ -6,6 +6,7 @@ from .data_utils import EXPERIMENT_DOMAINS
 
 
 def per_domain_join_accuracy(data, slot_temp):
+    result = []
     for dom in EXPERIMENT_DOMAINS:
         count = 0
         jt = 0
@@ -21,8 +22,10 @@ def per_domain_join_accuracy(data, slot_temp):
                 temp_acc = compute_acc(set(gg), set(pp), slot_temp)
                 acc += temp_acc
         if count == 0:
-            return (dom, 0.1,0.0)
+            continue
         print(dom, jt / count, acc / count)
+        result.append((dom, acc / count, jt / count))
+    return result
 
 
 def compute_acc(gold, pred, slot_temp):

@@ -210,13 +210,13 @@ def model_evaluation(model, test_data, tokenizer, slot_meta, epoch, op_code='4',
     print("Final slot turn F1 : ", final_slot_F1_score)
     print("Latency Per Prediction : %f ms" % latency)
     print("-----------------------------\n")
-    json.dump(results, open('preds_%d.json' % epoch, 'w'))
-    per_domain_join_accuracy(results, slot_meta)
+    # json.dump(results, open('preds_%d.json' % epoch, 'w'))
+    res_per_domain = per_domain_join_accuracy(results, slot_meta)
 
     scores = {'epoch': epoch, 'joint_acc': joint_acc_score,
               'slot_acc': turn_acc_score, 'slot_f1': slot_F1_score,
               'op_acc': op_acc_score, 'op_f1': op_F1_score, 'final_slot_f1': final_slot_F1_score}
-    return scores
+    return scores, res_per_domain, results
 
 
 if __name__ == "__main__":

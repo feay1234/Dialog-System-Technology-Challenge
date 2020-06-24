@@ -38,6 +38,16 @@ def save_data(data, filename):
         pickle.dump(data, f)
 
 
+def save_result_to_file(filename, eval_res, res_per_domain):
+    thefile = open(filename, 'a')
+
+    thefile.write("all,%f,%f\n" % (eval_res['slot_acc'], eval_res['joint_acc']))
+    for res in res_per_domain:
+        thefile.write("%s,%f,%f\n" % res)
+    thefile.close()
+
+
+
 def make_turn_label(slot_meta, last_dialog_state, turn_dialog_state,
                     tokenizer, op_code='4', dynamic=False):
     if dynamic:
@@ -196,6 +206,9 @@ def prepare_dataset(data_path, tokenizer, slot_meta,
             instance.make_instance(tokenizer)
             data.append(instance)
             last_dialog_state = turn_dialog_state
+
+        if idx == 2:
+            break
 
     save_data(data, data_path + ".pk")
     return data

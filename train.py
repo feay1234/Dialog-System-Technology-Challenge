@@ -3,7 +3,7 @@ from time import strftime, localtime
 
 from model import SomDST
 from pytorch_transformers import BertTokenizer, AdamW, WarmupLinearSchedule, BertConfig
-from utils.data_utils import prepare_dataset, MultiWozDataset, load_data
+from utils.data_utils import prepare_dataset, MultiWozDataset, load_data, save_result_to_file
 from utils.data_utils import make_slot_meta, domain2id, OP_SET, make_turn_label, postprocessing
 from utils.eval_utils import compute_prf, compute_acc, per_domain_join_accuracy
 from utils.ckpt_utils import download_ckpt, convert_ckpt_compatible
@@ -51,8 +51,8 @@ def main(args):
         torch.backends.cudnn.benchmark = False
         torch.backends.cudnn.deterministic = True
 
-    if not os.path.exists(args.save_dir):
-        os.mkdir(args.save_dir)
+    if not os.path.exists(args.out_dir):
+        os.mkdir(args.out_dir)
 
     ontology = json.load(open(args.ontology_data))
     slot_meta, ontology = make_slot_meta(ontology)
@@ -209,26 +209,29 @@ def main(args):
                 batch_loss = []
 
         if (epoch + 1) % args.eval_epoch == 0:
-            eval_res = model_evaluation(model, dev_data_raw, tokenizer, slot_meta, epoch + 1, args.op_code)
+            eval_res, res_per_domain, pred = model_evaluation(model, dev_data_raw, tokenizer, slot_meta, epoch + 1, args.op_code)
 
             if eval_res['joint_acc'] > best_score['joint_acc']:
                 best_score = eval_res
                 model_to_save = model.module if hasattr(model, 'module') else model
-                save_path = os.path.join(args.save_dir, 'model_best.bin')
+                save_path = os.path.join(args.out_dir, args.filename + '.bin')
                 torch.save(model_to_save.state_dict(), save_path)
             print("Best Score : ", best_score)
             print("\n")
 
     print("Test using best model...")
     best_epoch = best_score['epoch']
-    ckpt_path = os.path.join(args.save_dir, 'model_best.bin')
+    ckpt_path = os.path.join(args.out_dir, args.filename + '.bin')
     model = SomDST(model_config, len(op2id), len(domain2id), op2id['update'], args.exclude_domain)
     ckpt = torch.load(ckpt_path, map_location='cpu')
     model.load_state_dict(ckpt)
     model.to(device)
 
-    model_evaluation(model, test_data_raw, tokenizer, slot_meta, best_epoch, args.op_code,
-                     is_gt_op=False, is_gt_p_state=False, is_gt_gen=False)
+    eval_res, res_per_domain, pred = model_evaluation(model, test_data_raw, tokenizer, slot_meta, best_epoch, args.op_code)
+    # save to file
+    save_result_to_file(args.out_dir + "/" + args.filename + ".res", eval_res, res_per_domain)
+    json.dump(pred, open('%s.pred' % (args.out_dir + "/" + args.filename), 'w'))
+
     # model_evaluation(model, test_data_raw, tokenizer, slot_meta, best_epoch, args.op_code,
     #                  is_gt_op=False, is_gt_p_state=False, is_gt_gen=True)
     # model_evaluation(model, test_data_raw, tokenizer, slot_meta, best_epoch, args.op_code,
@@ -258,6 +261,7 @@ if __name__ == "__main__":
     parser.add_argument("--bert_config_path", default='assets/bert_config_base_uncased.json', type=str)
     parser.add_argument("--bert_ckpt_path", default='assets/bert-base-uncased-pytorch_model.bin', type=str)
     parser.add_argument("--save_dir", default='outputs', type=str)
+    parser.add_argument("--out_dir", default='outputs', type=str)
     parser.add_argument('--enable_wdc', type=int, default=0)
 
     parser.add_argument("--random_seed", default=42, type=int)
@@ -297,6 +301,7 @@ if __name__ == "__main__":
         filename = "%s_%s_wdc_e%d_%s" % (dataset, modelName, args.n_epochs, timestamp)
 
     args.save_dir = os.path.join(args.save_dir, filename)
+    args.filename = filename
 
     args.train_data_path = os.path.join(args.data_root, args.train_data)
     args.dev_data_path = os.path.join(args.data_root, args.dev_data)
