@@ -3,7 +3,7 @@ from time import strftime, localtime
 
 from model import SomDST
 from pytorch_transformers import BertTokenizer, AdamW, WarmupLinearSchedule, BertConfig
-from utils.data_utils import prepare_dataset, MultiWozDataset
+from utils.data_utils import prepare_dataset, MultiWozDataset, load_data
 from utils.data_utils import make_slot_meta, domain2id, OP_SET, make_turn_label, postprocessing
 from utils.eval_utils import compute_prf, compute_acc, per_domain_join_accuracy
 from utils.ckpt_utils import download_ckpt, convert_ckpt_compatible
@@ -61,12 +61,19 @@ def main(args):
     print(op2id)
     tokenizer = BertTokenizer(args.vocab_path, do_lower_case=True)
 
-    train_data_raw = prepare_dataset(data_path=args.train_data_path,
-                                     tokenizer=tokenizer,
-                                     slot_meta=slot_meta,
-                                     n_history=args.n_history,
-                                     max_seq_length=args.max_seq_length,
-                                     op_code=args.op_code)
+    print(args.train_data_path)
+
+    if os.path.exists(args.train_data_path + ".pk"):
+        train_data_raw = load_data(args.train_data_path + ".pk")
+    else:
+
+        train_data_raw = prepare_dataset(data_path=args.train_data_path,
+                                         tokenizer=tokenizer,
+                                         slot_meta=slot_meta,
+                                         n_history=args.n_history,
+                                         max_seq_length=args.max_seq_length,
+                                         op_code=args.op_code)
+    print(train_data_raw)
 
     train_data = MultiWozDataset(train_data_raw,
                                  tokenizer,
