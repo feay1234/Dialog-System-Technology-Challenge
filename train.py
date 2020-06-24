@@ -140,8 +140,8 @@ def main(args):
     dec_scheduler = WarmupLinearSchedule(dec_optimizer, int(num_train_steps * args.dec_warmup),
                                          t_total=num_train_steps)
 
-    if n_gpu > 1:
-        model = torch.nn.DataParallel(model)
+    # if n_gpu > 1:
+    #     model = torch.nn.DataParallel(model)
 
     train_sampler = RandomSampler(train_data)
     train_dataloader = DataLoader(train_data,
