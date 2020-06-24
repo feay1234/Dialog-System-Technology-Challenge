@@ -8,9 +8,7 @@ import numpy as np
 import json
 from torch.utils.data import Dataset
 import torch
-import random
-import re
-from copy import deepcopy
+import pickle
 
 from tqdm import tqdm
 
@@ -27,6 +25,17 @@ OP_SET = {
     '4': {'delete': 0, 'update': 1, 'dontcare': 2, 'carryover': 3},
     '6': {'delete': 0, 'update': 1, 'dontcare': 2, 'carryover': 3, 'yes': 4, 'no': 5}
 }
+
+
+
+def load_data(filename):
+    with open(filename, 'rb') as f:
+        x = pickle.load(f)
+    return x
+
+def save_data(data, filename):
+    with open(filename, "wb") as f:
+        pickle.dump(data, f)
 
 
 def make_turn_label(slot_meta, last_dialog_state, turn_dialog_state,
@@ -187,9 +196,8 @@ def prepare_dataset(data_path, tokenizer, slot_meta,
             instance.make_instance(tokenizer)
             data.append(instance)
             last_dialog_state = turn_dialog_state
-        # print(idx)
-        #if idx == 5:
-        #    break
+
+    save_data(data, data_path + ".pk")
     return data
 
 
