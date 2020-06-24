@@ -19,7 +19,6 @@ import os
 import json
 import time
 
-
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
@@ -61,8 +60,6 @@ def main(args):
     print(op2id)
     tokenizer = BertTokenizer(args.vocab_path, do_lower_case=True)
 
-    print(args.train_data_path)
-
     if os.path.exists(args.train_data_path + ".pk"):
         train_data_raw = load_data(args.train_data_path + ".pk")
     else:
@@ -73,8 +70,6 @@ def main(args):
                                          n_history=args.n_history,
                                          max_seq_length=args.max_seq_length,
                                          op_code=args.op_code)
-    print(train_data_raw)
-
     train_data = MultiWozDataset(train_data_raw,
                                  tokenizer,
                                  slot_meta,
@@ -86,20 +81,26 @@ def main(args):
                                  args.shuffle_p)
     print("# train examples %d" % len(train_data_raw))
 
-    dev_data_raw = prepare_dataset(data_path=args.dev_data_path,
-                                   tokenizer=tokenizer,
-                                   slot_meta=slot_meta,
-                                   n_history=args.n_history,
-                                   max_seq_length=args.max_seq_length,
-                                   op_code=args.op_code)
+    if os.path.exists(args.dev_data_path + ".pk"):
+        train_data_raw = load_data(args.dev_data_path + ".pk")
+    else:
+        dev_data_raw = prepare_dataset(data_path=args.dev_data_path,
+                                       tokenizer=tokenizer,
+                                       slot_meta=slot_meta,
+                                       n_history=args.n_history,
+                                       max_seq_length=args.max_seq_length,
+                                       op_code=args.op_code)
     print("# dev examples %d" % len(dev_data_raw))
 
-    test_data_raw = prepare_dataset(data_path=args.test_data_path,
-                                    tokenizer=tokenizer,
-                                    slot_meta=slot_meta,
-                                    n_history=args.n_history,
-                                    max_seq_length=args.max_seq_length,
-                                    op_code=args.op_code)
+    if os.path.exists(args.test_data_path + ".pk"):
+        train_data_raw = load_data(args.test_data_path + ".pk")
+    else:
+        test_data_raw = prepare_dataset(data_path=args.test_data_path,
+                                        tokenizer=tokenizer,
+                                        slot_meta=slot_meta,
+                                        n_history=args.n_history,
+                                        max_seq_length=args.max_seq_length,
+                                        op_code=args.op_code)
     print("# test examples %d" % len(test_data_raw))
 
     model_config = BertConfig.from_json_file(args.bert_config_path)
@@ -128,7 +129,7 @@ def main(args):
     enc_optimizer_grouped_parameters = [
         {'params': [p for n, p in enc_param_optimizer if not any(nd in n for nd in no_decay)], 'weight_decay': 0.01},
         {'params': [p for n, p in enc_param_optimizer if any(nd in n for nd in no_decay)], 'weight_decay': 0.0}
-        ]
+    ]
 
     enc_optimizer = AdamW(enc_optimizer_grouped_parameters, lr=args.enc_lr)
     enc_scheduler = WarmupLinearSchedule(enc_optimizer, int(num_train_steps * args.enc_warmup),
@@ -151,8 +152,8 @@ def main(args):
                                   worker_init_fn=worker_init_fn)
 
     loss_fnc = nn.CrossEntropyLoss()
-    best_score = {'epoch': float("-inf"), 'joint_acc': float("-inf"), 'op_acc': float("-inf"), 'final_slot_f1': float("-inf")}
-
+    best_score = {'epoch': float("-inf"), 'joint_acc': float("-inf"), 'op_acc': float("-inf"),
+                  'final_slot_f1': float("-inf")}
 
     for epoch in range(args.n_epochs):
         batch_loss = []
@@ -160,14 +161,13 @@ def main(args):
         pbar = tqdm(enumerate(train_dataloader), total=len(train_dataloader), desc="training", ncols=0)
         for step, batch in pbar:
             batch = [b.to(device) if not isinstance(b, int) else b for b in batch]
-            input_ids, input_mask, segment_ids, state_position_ids, op_ids,\
+            input_ids, input_mask, segment_ids, state_position_ids, op_ids, \
             domain_ids, gen_ids, max_value, max_update = batch
 
             if rng.random() < args.decoder_teacher_forcing:  # teacher forcing
                 teacher = gen_ids
             else:
                 teacher = None
-
 
             domain_scores, state_scores, gen_scores = model(input_ids=input_ids,
                                                             token_type_ids=segment_ids,
@@ -198,18 +198,18 @@ def main(args):
             if step % 100 == 0:
                 if args.exclude_domain is not True:
                     print("[%d/%d] [%d/%d] mean_loss : %.3f, state_loss : %.3f, gen_loss : %.3f, dom_loss : %.3f" \
-                          % (epoch+1, args.n_epochs, step,
+                          % (epoch + 1, args.n_epochs, step,
                              len(train_dataloader), np.mean(batch_loss),
                              loss_s.item(), loss_g.item(), loss_d.item()))
                 else:
                     print("[%d/%d] [%d/%d] mean_loss : %.3f, state_loss : %.3f, gen_loss : %.3f" \
-                          % (epoch+1, args.n_epochs, step,
+                          % (epoch + 1, args.n_epochs, step,
                              len(train_dataloader), np.mean(batch_loss),
                              loss_s.item(), loss_g.item()))
                 batch_loss = []
 
-        if (epoch+1) % args.eval_epoch == 0:
-            eval_res = model_evaluation(model, dev_data_raw, tokenizer, slot_meta, epoch+1, args.op_code)
+        if (epoch + 1) % args.eval_epoch == 0:
+            eval_res = model_evaluation(model, dev_data_raw, tokenizer, slot_meta, epoch + 1, args.op_code)
 
             if eval_res['joint_acc'] > best_score['joint_acc']:
                 best_score = eval_res
@@ -243,7 +243,6 @@ def main(args):
     #                  is_gt_op=True, is_gt_p_state=False, is_gt_gen=True)
     # model_evaluation(model, test_data_raw, tokenizer, slot_meta, best_epoch, args.op_code,
     #                  is_gt_op=True, is_gt_p_state=True, is_gt_gen=True)
-
 
 
 if __name__ == "__main__":
@@ -292,7 +291,7 @@ if __name__ == "__main__":
     modelName = "som"
     timestamp = strftime('%Y_%m_%d_%H_%M_%S', localtime())
 
-    filename = "%s_%s_e%d_%s" % (dataset, modelName, args.n_epochs,timestamp)
+    filename = "%s_%s_e%d_%s" % (dataset, modelName, args.n_epochs, timestamp)
 
     if args.enable_wdc:
         filename = "%s_%s_wdc_e%d_%s" % (dataset, modelName, args.n_epochs, timestamp)
