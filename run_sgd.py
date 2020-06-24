@@ -37,7 +37,7 @@ if __name__ == '__main__':
     #
     best_acc = 0
     for epoch in range(args.epoch_nb):
-        
+
         if args.enable_wdc:
             model.train_model('data/sgd/wdc.json')
             modelName = "sgd_%s_%s_wdc" % (args.eval_mode, "bert")
