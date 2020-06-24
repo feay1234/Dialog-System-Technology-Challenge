@@ -21,7 +21,7 @@ def print2file(path, name, format, printout,enablePrint=True):
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser('DSTC8 - SGD')
-    parser.add_argument('--eval_mode', type=str, default="single")
+    parser.add_argument('--data', type=str, default="multiwoz2.0")
     parser.add_argument('--enable_wdc', type=int, default=0)
     parser.add_argument('--out_dir', type=str, default="out/")
     parser.add_argument('--use_cuda', type=int, default=0)
@@ -31,7 +31,7 @@ if __name__ == '__main__':
 
     # Create the QuestionAnsweringModel
     model = QuestionAnsweringModel('bert', 'bert-base-uncased', use_cuda=args.use_cuda, args={'reprocess_input_data': True, 'overwrite_output_dir': True})
-    modelName = "sgd_%s_%s" % (args.eval_mode, "bert")
+    modelName = "%s_%s" % (args.data, "bert")
 
 
     #
@@ -40,11 +40,11 @@ if __name__ == '__main__':
 
         if args.enable_wdc:
             model.train_model('data/sgd/wdc.json')
-            modelName = "sgd_%s_%s_wdc" % (args.eval_mode, "bert")
+            modelName = "%s_%s_wdc" % (args.data, "bert")
 
-        model.train_model('data/sgd/sgd-train-%s.json' % args.eval_mode)
+        model.train_model('data/sgd/%s-train.json' % args.data)
         # result, out = model.eval_model('data/sgd/sgd-dev-%s.json' % args.eval_mode)
-        result, out = model.eval_model('data/sgd/sgd-test-%s.json' % args.eval_mode)
+        result, out = model.eval_model('data/sgd/%s-test.json' % args.data)
 
         slot_acc = result['correct'] / (result['correct'] + result['similar'] + result['incorrect'])
 
