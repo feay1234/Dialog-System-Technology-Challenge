@@ -9,6 +9,7 @@ import torch.nn as nn
 from pytorch_transformers.modeling_bert import BertPreTrainedModel, BertModel
 
 
+
 class SomDST(BertPreTrainedModel):
     def __init__(self, config, n_op, n_domain, update_id, exclude_domain=False):
         super(SomDST, self).__init__(config)
