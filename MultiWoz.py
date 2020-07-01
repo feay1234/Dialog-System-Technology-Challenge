@@ -7,6 +7,7 @@ import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
 from tokenizers import BertWordPieceTokenizer
+from tqdm import tqdm
 from transformers import BertTokenizer, TFBertModel, BertConfig
 
 max_len = 512
@@ -118,7 +119,9 @@ raw_data = generate_slot_gate_clf_woz(train)
 
 # generate slot classification
 x_train, y_train = [[],[],[]], []
-for did in raw_data:
+pbar = tqdm(raw_data, total=len(raw_data), desc="training", ncols=0)
+# for step, batch in pbar:
+for did in pbar:
     for turn in raw_data[did]:
         for slot in ontology:
             context = turn[0]
