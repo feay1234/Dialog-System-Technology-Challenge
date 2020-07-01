@@ -110,7 +110,7 @@ def generate_slot_gate_clf_woz(data):
             instances.append([" ".join(all_context), current_slot_names])
 
         train_data[dialogue_id] = instances
-        break
+        # break
     return train_data
 
 raw_data = generate_slot_gate_clf_woz(train)
@@ -136,7 +136,7 @@ x_train[2] = np.array(x_train[2])
 y_train = np.array(y_train)
 
 
-
+print(y_train.shape)
 model = create_model()
 # context = "User: am looking for a place to to stay that has cheap price range it should be in a type of hotel"
 # question = "hotel-price range"
