@@ -132,6 +132,7 @@ for did in pbar:
             x_train[1].append(token_type_ids)
             x_train[2].append(attention_mask)
             y_train.append([1,0,0] if slot in question else [0,0,1])
+    break
 
 x_train[0] = np.array(x_train[0])
 x_train[1] = np.array(x_train[1])
