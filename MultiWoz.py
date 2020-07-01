@@ -119,7 +119,7 @@ raw_data = generate_slot_gate_clf_woz(train)
 
 # generate slot classification
 x_train, y_train = [[],[],[]], []
-pbar = tqdm(raw_data, total=len(raw_data), desc="training", ncols=0)
+pbar = tqdm(raw_data, total=100, desc="training", ncols=0)
 # for step, batch in pbar:
 for did in pbar:
     for turn in raw_data[did]:
