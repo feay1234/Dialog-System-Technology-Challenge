@@ -67,7 +67,7 @@ def preprocess(context, question):
         attention_mask = attention_mask + ([0] * padding_length)
         token_type_ids = token_type_ids + ([0] * padding_length)
 
-    return input_ids, token_type_ids, attention_mask
+    return np.array(input_ids), np.array(token_type_ids), np.array(attention_mask)
 
 
 def create_model():
