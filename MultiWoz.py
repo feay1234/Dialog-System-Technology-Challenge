@@ -10,14 +10,14 @@ from tokenizers import BertWordPieceTokenizer
 from tqdm import tqdm
 from transformers import BertTokenizer, TFBertModel, BertConfig
 
+from keras import backend as K
 
-from keras.backend.tensorflow_backend import set_session
-import tensorflow as tf
-config = tf.ConfigProto()
-config.gpu_options.allow_growth = True  # dynamically grow the memory used on the GPU
-config.log_device_placement = True  # to log device placement (on which device the operation ran)
-sess = tf.Session(config=config)
-set_session(sess)  # set this TensorFlow session as the default session for Keras
+config = tf.compat.v1.ConfigProto(allow_soft_placement=True)
+config.gpu_options.per_process_gpu_memory_fraction = 0.9
+config.gpu_options.allow_growth = True
+sess = tf.compat.v1.Session(config=config)
+tf.compat.v1.keras.backend.set_session(sess)
+
 
 max_len = 512
 configuration = BertConfig()  # default paramters and configuration for BERT
@@ -130,6 +130,7 @@ raw_data = generate_slot_gate_clf_woz(train)
 x_train, y_train = [[],[],[]], []
 pbar = tqdm(raw_data, total=100, desc="training", ncols=0)
 # for step, batch in pbar:
+count = 0
 for did in pbar:
     for turn in raw_data[did]:
         for slot in ontology:
@@ -141,7 +142,9 @@ for did in pbar:
             x_train[1].append(token_type_ids)
             x_train[2].append(attention_mask)
             y_train.append([1,0,0] if slot in question else [0,0,1])
-    break
+    count += 1
+    if count == 100:
+        break
 
 x_train[0] = np.array(x_train[0])
 x_train[1] = np.array(x_train[1])
@@ -157,5 +160,5 @@ model = create_model()
 # input_ids, token_type_ids, attention_mask = preprocess(context, question)
 #
 # print(model.predict([np.array([input_ids]), np.array([token_type_ids]), np.array([attention_mask])]))
-model.fit(x_train, y_train)
+model.fit(x_train, y_train, batch_size=4)
 
