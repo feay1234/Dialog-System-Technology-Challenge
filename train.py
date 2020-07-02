@@ -254,8 +254,8 @@ if __name__ == "__main__":
 
     # Required parameters
     parser.add_argument("--data_root", default='data/multiwoz2.1', type=str)
-    # parser.add_argument("--train_data", default='train_dials.json', type=str)
-    parser.add_argument("--train_data", default='wdc_dials.json', type=str)
+    parser.add_argument("--train_data", default='train_dials.json', type=str)
+    # parser.add_argument("--train_data", default='wdc_dials.json', type=str)
     parser.add_argument("--dev_data", default='dev_dials.json', type=str)
     parser.add_argument("--test_data", default='test_dials.json', type=str)
     parser.add_argument("--ontology_data", default='ontology.json', type=str)

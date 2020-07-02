@@ -67,6 +67,8 @@ def preprocess(context, question):
         attention_mask = attention_mask + ([0] * padding_length)
         token_type_ids = token_type_ids + ([0] * padding_length)
 
+    if len(input_ids) != 512:
+        print(len(input_ids))
     return np.array(input_ids), np.array(token_type_ids), np.array(attention_mask)
 
 
@@ -151,14 +153,17 @@ x_train[1] = np.array(x_train[1])
 x_train[2] = np.array(x_train[2])
 y_train = np.array(y_train)
 
+for i in range(len(x_train)):
+    print(x_train[i].shape)
+
 
 print(y_train.shape)
-model = create_model()
-# context = "User: am looking for a place to to stay that has cheap price range it should be in a type of hotel"
-# question = "hotel-price range"
-#
-# input_ids, token_type_ids, attention_mask = preprocess(context, question)
-#
-# print(model.predict([np.array([input_ids]), np.array([token_type_ids]), np.array([attention_mask])]))
-model.fit(x_train, y_train, batch_size=4)
+# model = create_model()
+# # context = "User: am looking for a place to to stay that has cheap price range it should be in a type of hotel"
+# # question = "hotel-price range"
+# #
+# # input_ids, token_type_ids, attention_mask = preprocess(context, question)
+# #
+# # print(model.predict([np.array([input_ids]), np.array([token_type_ids]), np.array([attention_mask])]))
+# model.fit(x_train, y_train, batch_size=4)
 
