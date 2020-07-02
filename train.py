@@ -165,6 +165,8 @@ def main(args):
             input_ids, input_mask, segment_ids, state_position_ids, op_ids, \
             domain_ids, gen_ids, max_value, max_update = batch
 
+            print(input_ids)
+
             if rng.random() < args.decoder_teacher_forcing:  # teacher forcing
                 teacher = gen_ids
             else:
