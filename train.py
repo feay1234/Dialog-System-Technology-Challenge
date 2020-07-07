@@ -211,6 +211,7 @@ def main(args):
                              len(train_dataloader), np.mean(batch_loss),
                              loss_s.item(), loss_g.item()))
                 batch_loss = []
+            break
 
         if (epoch + 1) % args.eval_epoch == 0:
             eval_res, res_per_domain, pred = model_evaluation(model, dev_data_raw, tokenizer, slot_meta, epoch + 1, args.op_code)
