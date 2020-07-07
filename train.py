@@ -169,7 +169,7 @@ def main(args):
                 teacher = gen_ids
             else:
                 teacher = None
-            # print(input_ids.shape)
+            # print(input_ids.shap
             domain_scores, state_scores, gen_scores = model(input_ids=input_ids,
                                                             token_type_ids=segment_ids,
                                                             state_positions=state_position_ids,
@@ -211,7 +211,6 @@ def main(args):
                              len(train_dataloader), np.mean(batch_loss),
                              loss_s.item(), loss_g.item()))
                 batch_loss = []
-            break
 
         if (epoch + 1) % args.eval_epoch == 0:
             eval_res, res_per_domain, pred = model_evaluation(model, dev_data_raw, tokenizer, slot_meta, epoch + 1, args.op_code)
@@ -224,7 +223,6 @@ def main(args):
             print("Best Score : ", best_score)
             print("\n")
 
-        break
     print("Test using best model...")
     best_epoch = best_score['epoch']
     ckpt_path = os.path.join(args.out_dir, args.filename + '.bin')
