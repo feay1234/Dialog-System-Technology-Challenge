@@ -157,7 +157,6 @@ def main(args):
                   'final_slot_f1': float("-inf")}
 
     for epoch in range(args.n_epochs):
-    # for epoch in range(3):
         batch_loss = []
         model.train()
         pbar = tqdm(enumerate(train_dataloader), total=len(train_dataloader), desc="training", ncols=0)
@@ -224,6 +223,7 @@ def main(args):
             print("Best Score : ", best_score)
             print("\n")
 
+        break
     print("Test using best model...")
     best_epoch = best_score['epoch']
     ckpt_path = os.path.join(args.out_dir, args.filename + '.bin')
