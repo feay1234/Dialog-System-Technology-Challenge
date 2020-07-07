@@ -57,8 +57,8 @@ def main(args):
     ontology = json.load(open(args.ontology_data))
     slot_meta, ontology = make_slot_meta(ontology)
     op2id = OP_SET[args.op_code]
-    print(op2id)
     tokenizer = BertTokenizer(args.vocab_path, do_lower_case=True)
+    print(op2id)
 
     if os.path.exists(args.train_data_path + ".pk"):
         train_data_raw = load_data(args.train_data_path + ".pk")
@@ -70,7 +70,6 @@ def main(args):
                                          n_history=args.n_history,
                                          max_seq_length=args.max_seq_length,
                                          op_code=args.op_code)
-    print(train_data_raw)
     train_data = MultiWozDataset(train_data_raw,
                                  tokenizer,
                                  slot_meta,
@@ -81,6 +80,7 @@ def main(args):
                                  args.shuffle_state,
                                  args.shuffle_p)
     print("# train examples %d" % len(train_data_raw))
+    print(len(train_data))
 
     if os.path.exists(args.dev_data_path + ".pk"):
         dev_data_raw = load_data(args.dev_data_path + ".pk")
@@ -157,6 +157,7 @@ def main(args):
                   'final_slot_f1': float("-inf")}
 
     for epoch in range(args.n_epochs):
+    # for epoch in range(3):
         batch_loss = []
         model.train()
         pbar = tqdm(enumerate(train_dataloader), total=len(train_dataloader), desc="training", ncols=0)
@@ -165,13 +166,11 @@ def main(args):
             input_ids, input_mask, segment_ids, state_position_ids, op_ids, \
             domain_ids, gen_ids, max_value, max_update = batch
 
-            print(input_ids)
-
             if rng.random() < args.decoder_teacher_forcing:  # teacher forcing
                 teacher = gen_ids
             else:
                 teacher = None
-
+            # print(input_ids.shape)
             domain_scores, state_scores, gen_scores = model(input_ids=input_ids,
                                                             token_type_ids=segment_ids,
                                                             state_positions=state_position_ids,
@@ -181,10 +180,13 @@ def main(args):
                                                             max_update=max_update,
                                                             teacher=teacher)
 
+            # state_scores > 5,30,2
+            #
             loss_s = loss_fnc(state_scores.view(-1, len(op2id)), op_ids.view(-1))
             loss_g = masked_cross_entropy_for_value(gen_scores.contiguous(),
                                                     gen_ids.contiguous(),
                                                     tokenizer.vocab['[PAD]'])
+            # break
             loss = loss_s + loss_g
             if args.exclude_domain is not True:
                 loss_d = loss_fnc(domain_scores.view(-1, len(domain2id)), domain_ids.view(-1))
@@ -198,42 +200,43 @@ def main(args):
             dec_scheduler.step()
             model.zero_grad()
 
-    #         if step % 100 == 0:
-    #             if args.exclude_domain is not True:
-    #                 print("[%d/%d] [%d/%d] mean_loss : %.3f, state_loss : %.3f, gen_loss : %.3f, dom_loss : %.3f" \
-    #                       % (epoch + 1, args.n_epochs, step,
-    #                          len(train_dataloader), np.mean(batch_loss),
-    #                          loss_s.item(), loss_g.item(), loss_d.item()))
-    #             else:
-    #                 print("[%d/%d] [%d/%d] mean_loss : %.3f, state_loss : %.3f, gen_loss : %.3f" \
-    #                       % (epoch + 1, args.n_epochs, step,
-    #                          len(train_dataloader), np.mean(batch_loss),
-    #                          loss_s.item(), loss_g.item()))
-    #             batch_loss = []
-    #
-    #     if (epoch + 1) % args.eval_epoch == 0:
-    #         eval_res, res_per_domain, pred = model_evaluation(model, dev_data_raw, tokenizer, slot_meta, epoch + 1, args.op_code)
-    #
-    #         if eval_res['joint_acc'] > best_score['joint_acc']:
-    #             best_score = eval_res
-    #             model_to_save = model.module if hasattr(model, 'module') else model
-    #             save_path = os.path.join(args.out_dir, args.filename + '.bin')
-    #             torch.save(model_to_save.state_dict(), save_path)
-    #         print("Best Score : ", best_score)
-    #         print("\n")
-    #
-    # print("Test using best model...")
-    # best_epoch = best_score['epoch']
-    # ckpt_path = os.path.join(args.out_dir, args.filename + '.bin')
-    # model = SomDST(model_config, len(op2id), len(domain2id), op2id['update'], args.exclude_domain)
-    # ckpt = torch.load(ckpt_path, map_location='cpu')
-    # model.load_state_dict(ckpt)
-    # model.to(device)
-    #
-    # eval_res, res_per_domain, pred = model_evaluation(model, test_data_raw, tokenizer, slot_meta, best_epoch, args.op_code)
-    # # save to file
-    # save_result_to_file(args.out_dir + "/" + args.filename + ".res", eval_res, res_per_domain)
-    # json.dump(pred, open('%s.pred' % (args.out_dir + "/" + args.filename), 'w'))
+            if step % 100 == 0:
+                if args.exclude_domain is not True:
+                    print("[%d/%d] [%d/%d] mean_loss : %.3f, state_loss : %.3f, gen_loss : %.3f, dom_loss : %.3f" \
+                          % (epoch + 1, args.n_epochs, step,
+                             len(train_dataloader), np.mean(batch_loss),
+                             loss_s.item(), loss_g.item(), loss_d.item()))
+                else:
+                    print("[%d/%d] [%d/%d] mean_loss : %.3f, state_loss : %.3f, gen_loss : %.3f" \
+                          % (epoch + 1, args.n_epochs, step,
+                             len(train_dataloader), np.mean(batch_loss),
+                             loss_s.item(), loss_g.item()))
+                batch_loss = []
+
+        if (epoch + 1) % args.eval_epoch == 0:
+            eval_res, res_per_domain, pred = model_evaluation(model, dev_data_raw, tokenizer, slot_meta, epoch + 1, args.op_code)
+
+            if eval_res['joint_acc'] > best_score['joint_acc']:
+                best_score = eval_res
+                model_to_save = model.module if hasattr(model, 'module') else model
+                save_path = os.path.join(args.out_dir, args.filename + '.bin')
+                torch.save(model_to_save.state_dict(), save_path)
+            print("Best Score : ", best_score)
+            print("\n")
+
+    print("Test using best model...")
+    best_epoch = best_score['epoch']
+    ckpt_path = os.path.join(args.out_dir, args.filename + '.bin')
+    model = SomDST(model_config, len(op2id), len(domain2id), op2id['update'], args.exclude_domain)
+    ckpt = torch.load(ckpt_path, map_location='cpu')
+    model.load_state_dict(ckpt)
+    model.to(device)
+
+    best_epoch = 0 #dummpy
+    eval_res, res_per_domain, pred = model_evaluation(model, test_data_raw, tokenizer, slot_meta, best_epoch, args.op_code)
+    # save to file
+    save_result_to_file(args.out_dir + "/" + args.filename + ".res", eval_res, res_per_domain)
+    json.dump(pred, open('%s.pred' % (args.out_dir + "/" + args.filename), 'w'))
 
     # model_evaluation(model, test_data_raw, tokenizer, slot_meta, best_epoch, args.op_code,
     #                  is_gt_op=False, is_gt_p_state=False, is_gt_gen=True)

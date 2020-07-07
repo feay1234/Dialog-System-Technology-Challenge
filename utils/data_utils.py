@@ -21,6 +21,7 @@ domain2id = {d: i for i, d in enumerate(EXPERIMENT_DOMAINS)}
 OP_SET = {
     '2': {'update': 0, 'carryover': 1},
     '3-1': {'update': 0, 'carryover': 1, 'dontcare': 2},
+    '3': {'update': 0, 'none': 1, 'dontcare': 2},
     '3-2': {'update': 0, 'carryover': 1, 'delete': 2},
     '4': {'delete': 0, 'update': 1, 'dontcare': 2, 'carryover': 3},
     '6': {'delete': 0, 'update': 1, 'dontcare': 2, 'carryover': 3, 'yes': 4, 'no': 5}
@@ -58,7 +59,7 @@ def make_turn_label(slot_meta, last_dialog_state, turn_dialog_state,
             k = '-'.join(s[:2])
             turn_dialog_state[k] = s[2]
 
-    op_labels = ['carryover'] * len(slot_meta)
+    op_labels = ['carryover'] * len(slot_meta) if op_code != '3' else ['none'] * len(slot_meta)
     generate_y = []
     keys = list(turn_dialog_state.keys())
     for k in keys:
@@ -69,18 +70,25 @@ def make_turn_label(slot_meta, last_dialog_state, turn_dialog_state,
         vv = last_dialog_state.get(k)
         try:
             idx = slot_meta.index(k)
-            if vv != v:
-                if v == 'dontcare' and OP_SET[op_code].get('dontcare') is not None:
+            if op_code == '3':
+                if v == 'dontcare':
                     op_labels[idx] = 'dontcare'
-                elif v == 'yes' and OP_SET[op_code].get('yes') is not None:
-                    op_labels[idx] = 'yes'
-                elif v == 'no' and OP_SET[op_code].get('no') is not None:
-                    op_labels[idx] = 'no'
                 else:
                     op_labels[idx] = 'update'
-                    generate_y.append([tokenizer.tokenize(v) + ['[EOS]'], idx])
-            elif vv == v:
-                op_labels[idx] = 'carryover'
+                    generate_y.append([tokenizer.tokenize(v), idx])
+            else:
+                if vv != v:
+                    if v == 'dontcare' and OP_SET[op_code].get('dontcare') is not None:
+                        op_labels[idx] = 'dontcare'
+                    elif v == 'yes' and OP_SET[op_code].get('yes') is not None:
+                        op_labels[idx] = 'yes'
+                    elif v == 'no' and OP_SET[op_code].get('no') is not None:
+                        op_labels[idx] = 'no'
+                    else:
+                        op_labels[idx] = 'update'
+                        generate_y.append([tokenizer.tokenize(v) + ['[EOS]'], idx])
+                elif vv == v:
+                    op_labels[idx] = 'carryover'
         except ValueError:
             continue
 
@@ -206,11 +214,10 @@ def prepare_dataset(data_path, tokenizer, slot_meta,
             instance.make_instance(tokenizer)
             data.append(instance)
             last_dialog_state = turn_dialog_state
-        # if idx == 2:
+        # if idx == 1:
         #     break
     save_data(data, data_path + ".pk")
     return data
-
 
 class TrainingInstance:
     def __init__(self, ID,

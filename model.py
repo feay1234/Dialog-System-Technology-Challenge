@@ -9,7 +9,6 @@ import torch.nn as nn
 from pytorch_transformers.modeling_bert import BertPreTrainedModel, BertModel
 
 
-
 class SomDST(BertPreTrainedModel):
     def __init__(self, config, n_op, n_domain, update_id, exclude_domain=False):
         super(SomDST, self).__init__(config)
@@ -53,11 +52,13 @@ class Encoder(nn.Module):
     def forward(self, input_ids, token_type_ids,
                 state_positions, attention_mask,
                 op_ids=None, max_update=None):
+
         bert_outputs = self.bert(input_ids, token_type_ids, attention_mask)
         sequence_output, pooled_output = bert_outputs[:2]
         state_pos = state_positions[:, :, None].expand(-1, -1, sequence_output.size(-1))
         state_output = torch.gather(sequence_output, 1, state_pos)
         state_scores = self.action_cls(self.dropout(state_output))  # B,J,4
+
         if self.exclude_domain:
             domain_scores = torch.zeros(1, device=input_ids.device)  # dummy
         else:
@@ -80,6 +81,7 @@ class Encoder(nn.Module):
                     v = torch.cat([v, zeros], 1)
             else:
                 v = torch.zeros(1, max_update, self.hidden_size, device=input_ids.device)
+
             gathered.append(v)
         decoder_inputs = torch.cat(gathered)
         return domain_scores, state_scores, decoder_inputs, sequence_output, pooled_output.unsqueeze(0)
@@ -113,7 +115,6 @@ class Decoder(nn.Module):
             slot_value = []
             for k in range(max_len):
                 w = self.dropout(w)
-                self.gru.flatten_parameters()
                 _, hidden = self.gru(w, hidden)  # 1,B,D
                 # B,T,D * B,D,1 => B,T
                 attn_e = torch.bmm(encoder_output, hidden.permute(1, 2, 0))  # B,T,1
