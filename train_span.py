@@ -134,7 +134,7 @@ def main(args):
             train_data = generate_train_data(train_data_raw[step:step+1], ontology, tokenizer)
 
             # ignore dialogue with no trainable turns
-            if train_data['input_ids'].shape[0] == 0:
+            if len(train_data['input_ids']) == 0:
                 continue
 
             _inp = {"input_ids": train_data['input_ids'].to(device),
@@ -145,7 +145,6 @@ def main(args):
                     "span_mask": train_data['span_mask'].to(device),
                     "slot_label": train_data['slot_label'].to(device)}
 
-            print(_inp['input_ids'].shape)
 
             outputs = model(**_inp)
 
