@@ -285,7 +285,7 @@ def evaluate_span(model, test_data_raw, tokenizer, ontology, slot_meta, epoch, d
         wall_times.append(end - start)
 
         # slot prediction
-        pred_op = [id2op[j] for j in np.argmax(outputs[0].detach().numpy(), 1)]
+        pred_op = [id2op[j] for j in np.argmax(outputs[0].cpu().data.numpy(), 1)]
         # pred_op[0] = 'update'
         #
         # # value prediction
@@ -299,8 +299,8 @@ def evaluate_span(model, test_data_raw, tokenizer, ontology, slot_meta, epoch, d
             else:
                 # get span prediction to text
                 all_tokens = tokenizer.convert_ids_to_tokens(test_data['input_ids'].numpy()[j])
-                start = np.argmax(outputs[1][j].detach().numpy())
-                end = np.argmax(outputs[2][j].detach().numpy())
+                start = np.argmax(outputs[1][j].cpu().data.numpy())
+                end = np.argmax(outputs[2][j].cpu().data.numpy())
                 span = ' '.join(all_tokens[start: end + 1])
                 pred_state.add(_slot + "-" + span)
 
