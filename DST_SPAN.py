@@ -92,7 +92,7 @@ class DST_SPAN(BertPreTrainedModel):
 
 
 def preprocess(tokenizer, context, slot=None, value=None):
-    max_len = 512
+    max_len = 256
     tokenized_context = tokenizer(context)
     if slot:
         tokenized_slot = tokenizer(slot)
