@@ -133,13 +133,13 @@ def main(args):
 
             train_data = generate_train_data(train_data_raw[step:step+1], ontology, tokenizer)
 
-            _inp = {"input_ids": train_data['input_ids'],
-                    "attention_mask": train_data['attention_mask'],
-                    "token_type_ids": train_data['token_type_ids'],
-                    "start_positions": train_data['start_positions'],
-                    "end_positions": train_data['end_positions'],
-                    "span_mask": train_data['span_mask'],
-                    "slot_label": train_data['slot_label']}
+            _inp = {"input_ids": train_data['input_ids'].to(device),
+                    "attention_mask": train_data['attention_mask'].to(device),
+                    "token_type_ids": train_data['token_type_ids'].to(device),
+                    "start_positions": train_data['start_positions'].to(device),
+                    "end_positions": train_data['end_positions'].to(device),
+                    "span_mask": train_data['span_mask'].to(device),
+                    "slot_label": train_data['slot_label'].to(device)}
 
             print(_inp['input_ids'].shape)
 
