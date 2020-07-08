@@ -4,6 +4,8 @@ from time import strftime, localtime
 from DST_SPAN import DST_SPAN, generate_train_data
 from model import SomDST
 from transformers import BertTokenizer, BertModel, AdamW
+
+from utils.ckpt_utils import download_ckpt
 from utils.data_utils import prepare_dataset, load_data, save_result_to_file
 from utils.data_utils import make_slot_meta, domain2id, OP_SET, make_turn_label, postprocessing
 from evaluation import model_evaluation
@@ -91,6 +93,14 @@ def main(args):
     print("# test examples %d" % len(test_data_raw))
 
     model = DST_SPAN.from_pretrained('bert-base-uncased')
+
+    if not os.path.exists(args.bert_ckpt_path):
+        args.bert_ckpt_path = download_ckpt(args.bert_ckpt_path, args.bert_config_path, 'assets')
+
+    ckpt = torch.load(args.bert_ckpt_path, map_location='cpu')
+    model.bert.load_state_dict(ckpt)
+
+
     no_decay = ["bias", "LayerNorm.weight", "LayerNorm.bias"]
     optimizer_grouped_parameters = [
         {
