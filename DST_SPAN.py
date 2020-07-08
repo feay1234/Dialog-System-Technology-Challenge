@@ -209,7 +209,76 @@ def generate_train_data(train_data_raw, ontology, tokenizer):
         data[key] = torch.tensor(np.array(data[key]))
     return data
 
+def generate_train_data2(train_data_raw, ontology, tokenizer):
+    data = collections.defaultdict(list)
 
+    for idx, instance in enumerate(train_data_raw):
+
+        gold_slots = set(["-".join(g.split("-")[:-1]) for g in instance.gold_state])
+        for g_state in instance.gold_state:
+            tmp = g_state.split("-")
+            slot = "-".join(tmp[:-1])
+            value = tmp[-1]
+
+            if slot not in ontology:
+                continue
+
+            neg_slot = np.random.choice(list(ontology.keys()))
+            while slot == neg_slot or neg_slot in gold_slots:
+                neg_slot = np.random.choice(list(ontology.keys()))
+
+            data['slot_label'].append(0 if value != "dontcare" else 1)
+            data['slot_label'].append(2)
+
+            #             #   picklist case
+            #             cand_values = ontology[slot]
+            #             neg_value = np.random.choice(cand_values)
+            #             while neg_value == value or neg_value == "do n't care":
+            #                 neg_value = np.random.choice(cand_values)
+
+            #             for val, label in [(value,1.0), (neg_value, 0.0)]:
+            #                 picklist_input_id, picklist_type_id, picklist_mask_id, _, _  = preprocess(val)
+            #                 data['value_input_ids'].append(picklist_input_id)
+            #                 data['value_token_type_ids'].append(picklist_type_id)
+            #                 data['value_attention_mask'].append(picklist_mask_id)
+            #                 data['value_label'].append(label)
+
+            # #           span case
+            span_mask = []
+            if value in instance.turn_utter:
+                input_id, token_type_id, attention_mask_id, start, end = preprocess(tokenizer, instance.turn_utter, slot, value)
+                data['input_ids'].append(input_id)
+                data['token_type_ids'].append(token_type_id)
+                data['attention_mask'].append(attention_mask_id)
+                data['start_positions'].append(start)
+                data['end_positions'].append(end)
+                data['span_mask'].append(1.0)
+                input_id, token_type_id, attention_mask_id, start, end = preprocess(tokenizer, instance.turn_utter, neg_slot)
+                data['input_ids'].append(input_id)
+                data['token_type_ids'].append(token_type_id)
+                data['attention_mask'].append(attention_mask_id)
+                data['start_positions'].append(start)
+                data['end_positions'].append(end)
+                data['span_mask'].append(0.0)
+
+            else:
+                for sl in [slot, neg_slot]:
+                    input_id, token_type_id, attention_mask_id, start, end = preprocess(tokenizer, instance.turn_utter, sl)
+                    data['input_ids'].append(input_id)
+                    data['token_type_ids'].append(token_type_id)
+                    data['attention_mask'].append(attention_mask_id)
+                    data['start_positions'].append(start)
+                    data['end_positions'].append(end)
+                    data['span_mask'].append(0.0)
+
+        # testing
+        # if idx == 20:
+        #     break
+
+    # print(torch.tensor(np.array(data["input_ids"])).shape)
+    for key in data:
+        data[key] = torch.tensor(np.array(data[key]))
+    return data
 
 
 def generate_test_data(instance, tokenizer, ontology, slot_meta):
