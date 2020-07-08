@@ -136,10 +136,10 @@ def preprocess(tokenizer, context, slot=None, value=None):
 
 def generate_train_data(train_data_raw, ontology, tokenizer):
     data = collections.defaultdict(list)
-    pbar = tqdm(enumerate(train_data_raw), total=len(train_data_raw), desc="Generating training dataset", ncols=0)
+    # pbar = tqdm(enumerate(train_data_raw), total=len(train_data_raw), desc="Generating training dataset", ncols=0)
 
-    # for idx, instance in enumerate(train_data_raw):
-    for idx, instance in pbar:
+    for idx, instance in enumerate(train_data_raw):
+    # for idx, instance in pbar:
 
         gold_slots = set(["-".join(g.split("-")[:-1]) for g in instance.gold_state])
         for g_state in instance.gold_state:

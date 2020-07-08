@@ -128,18 +128,18 @@ def main(args):
         batch_loss = []
         model.train()
 
-        train_data = generate_train_data(train_data_raw, ontology, tokenizer)
-        print("num", train_data['input_ids'].shape[0])
 
-        for step in tqdm(range(int(train_data['input_ids'].shape[0] / args.batch_size)+1), desc="training"):
+        for step in tqdm(range(len(train_data_raw)), desc="training"):
 
-            _inp = {"input_ids": train_data['input_ids'][args.batch_size * step : (args.batch_size * step) + args.batch_size],
-                    "attention_mask": train_data['attention_mask'][args.batch_size * step : (args.batch_size * step) + args.batch_size],
-                    "token_type_ids": train_data['token_type_ids'][args.batch_size * step : (args.batch_size * step) + args.batch_size],
-                    "start_positions": train_data['start_positions'][args.batch_size * step : (args.batch_size * step) + args.batch_size],
-                    "end_positions": train_data['end_positions'][args.batch_size * step : (args.batch_size * step) + args.batch_size],
-                    "span_mask": train_data['span_mask'][args.batch_size * step : (args.batch_size * step) + args.batch_size],
-                    "slot_label": train_data['slot_label'][args.batch_size * step : (args.batch_size * step) + args.batch_size]}
+            train_data = generate_train_data(train_data_raw[step:step+1], ontology, tokenizer)
+
+            _inp = {"input_ids": train_data['input_ids'],
+                    "attention_mask": train_data['attention_mask'],
+                    "token_type_ids": train_data['token_type_ids'],
+                    "start_positions": train_data['start_positions'],
+                    "end_positions": train_data['end_positions'],
+                    "span_mask": train_data['span_mask'],
+                    "slot_label": train_data['slot_label']}
 
             print(_inp['input_ids'].shape)
 
