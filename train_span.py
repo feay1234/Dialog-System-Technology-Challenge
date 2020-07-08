@@ -1,7 +1,7 @@
 from tqdm import tqdm
 from time import strftime, localtime
 
-from DST_SPAN import DST_SPAN, generate_train_data
+from DST_SPAN import DST_SPAN, generate_train_data, evaluate_span
 from model import SomDST
 from transformers import BertTokenizer, BertModel, AdamW
 
@@ -100,7 +100,6 @@ def main(args):
     ckpt = torch.load(args.bert_ckpt_path, map_location='cpu')
     model.bert.load_state_dict(ckpt)
 
-
     no_decay = ["bias", "LayerNorm.weight", "LayerNorm.bias"]
     optimizer_grouped_parameters = [
         {
@@ -127,15 +126,14 @@ def main(args):
     for epoch in range(args.n_epochs):
         batch_loss = []
         model.train()
-
-
-        for step in tqdm(range(len(train_data_raw)), desc="training"):
-
-            train_data = generate_train_data(train_data_raw[step:step+1], ontology, tokenizer)
+        for step in tqdm(range(int(len(train_data_raw) / args.batch_size) + 1), desc="training"):
+        #
+            train_data = generate_train_data(train_data_raw[step * args.batch_size:(step * args.batch_size) + args.batch_size], ontology, tokenizer)
 
             # ignore dialogue with no trainable turns
             if len(train_data['input_ids']) == 0:
                 continue
+            print(train_data['input_ids'].shape)
 
             _inp = {"input_ids": train_data['input_ids'].to(device),
                     "attention_mask": train_data['attention_mask'].to(device),
@@ -145,32 +143,22 @@ def main(args):
                     "span_mask": train_data['span_mask'].to(device),
                     "slot_label": train_data['slot_label'].to(device)}
 
-
             outputs = model(**_inp)
 
             loss = outputs[0].mean()
+            batch_loss.append(loss.item())
 
             loss.backward()
             optimizer.step()
             model.zero_grad()
-            # break
-        break
-
-    #         if step % 100 == 0:
-    #             if args.exclude_domain is not True:
-    #                 print("[%d/%d] [%d/%d] mean_loss : %.3f, state_loss : %.3f, gen_loss : %.3f, dom_loss : %.3f" \
-    #                       % (epoch + 1, args.n_epochs, step,
-    #                          len(train_dataloader), np.mean(batch_loss),
-    #                          loss_s.item(), loss_g.item(), loss_d.item()))
-    #             else:
-    #                 print("[%d/%d] [%d/%d] mean_loss : %.3f, state_loss : %.3f, gen_loss : %.3f" \
-    #                       % (epoch + 1, args.n_epochs, step,
-    #                          len(train_dataloader), np.mean(batch_loss),
-    #                          loss_s.item(), loss_g.item()))
-    #             batch_loss = []
+        #
+            if step % 100 == 0:
+                print("[%d/%d] [%d/%d] mean_loss : %.3f" % (epoch + 1, args.n_epochs, step, len(train_data_raw), np.mean(batch_loss)))
+                batch_loss = []
     #
-    #     if (epoch + 1) % args.eval_epoch == 0:
-    #         eval_res, res_per_domain, pred = model_evaluation(model, dev_data_raw, tokenizer, slot_meta, epoch + 1, args.op_code)
+        # if (epoch + 1) % args.eval_epoch == 0:
+        #     evaluate_span(dev_data_raw, tokenizer, ontology, slot_meta)
+        #     eval_res, res_per_domain, pred = model_evaluation(model, dev_data_raw, tokenizer, slot_meta, epoch + 1, args.op_code)
     #
     #         if eval_res['joint_acc'] > best_score['joint_acc']:
     #             best_score = eval_res
@@ -189,7 +177,6 @@ def main(args):
     # # save to file
     # save_result_to_file(args.out_dir + "/" + args.filename + ".res", eval_res, res_per_domain)
     # json.dump(pred, open('%s.pred' % (args.out_dir + "/" + args.filename), 'w'))
-
 
 
 if __name__ == "__main__":
@@ -216,7 +203,7 @@ if __name__ == "__main__":
     parser.add_argument("--dec_warmup", default=0.1, type=float)
     parser.add_argument("--enc_lr", default=4e-5, type=float)
     parser.add_argument("--dec_lr", default=1e-4, type=float)
-    parser.add_argument("--n_epochs", default=30, type=int)
+    parser.add_argument("--n_epochs", default=1, type=int)
     parser.add_argument("--eval_epoch", default=1, type=int)
 
     parser.add_argument("--op_code", default="4", type=str)
