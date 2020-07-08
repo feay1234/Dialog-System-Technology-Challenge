@@ -256,7 +256,7 @@ def generate_test_data(instance, tokenizer, ontology, slot_meta):
 
 def evaluate_span(model, test_data_raw, tokenizer, ontology, slot_meta, epoch):
 
-    op2id = {'update': 0, 'none': 1, 'dontcare': 2}
+    op2id = {'update': 0, 'none': 2, 'dontcare': 1}
 
     id2op = {v: k for k, v in op2id.items()}
 
