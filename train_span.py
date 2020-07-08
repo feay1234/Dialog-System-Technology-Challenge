@@ -138,7 +138,8 @@ def main(args):
             # train_data = generate_train_data(train_data_raw[step: step+1], ontology, tokenizer)
             inp = tokenizer(train_data_raw[step].turn_utter)
 
-            maxlen = max(maxlen, inp['input_ids'].shape[1])
+            # print(inp)
+            maxlen = max(maxlen, len(inp['input_ids']))
             print(maxlen)
 
     #         # ignore dialogue with no trainable turns
