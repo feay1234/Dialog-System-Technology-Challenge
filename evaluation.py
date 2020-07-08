@@ -169,6 +169,7 @@ def model_evaluation(model, test_data, tokenizer, slot_meta, epoch, op_code='4',
             final_slot_F1_pred += temp_f1
             final_slot_F1_count += count
 
+
         # Compute operation F1 score
         for p, g in zip(pred_ops, gold_ops):
             all_op_F1_count[g] += 1

@@ -1,6 +1,8 @@
 from tqdm import tqdm
 from time import strftime, localtime
 
+from transformers import BertForQuestionAnswering
+
 from model import SomDST
 from pytorch_transformers import BertTokenizer, AdamW, WarmupLinearSchedule, BertConfig
 from utils.data_utils import prepare_dataset, MultiWozDataset, load_data, save_result_to_file
@@ -169,6 +171,7 @@ def main(args):
                 teacher = gen_ids
             else:
                 teacher = None
+
             # print(input_ids.shap
             domain_scores, state_scores, gen_scores = model(input_ids=input_ids,
                                                             token_type_ids=segment_ids,
