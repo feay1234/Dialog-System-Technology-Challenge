@@ -69,12 +69,10 @@ def main(args):
                                          op_code=args.op_code)
 
     print("# train examples %d" % len(train_data_raw))
-    maxlen = 0
-    for i in range(len(train_data_raw)):
-
-        maxlen = max(maxlen, len(train_data_raw[i].turn_utter.split()))
-    print(maxlen)
-
+    # maxlen = 0
+    # for i in range(len(train_data_raw)):
+    #     maxlen = max(maxlen, len(train_data_raw[i].turn_utter.split()))
+    # print(maxlen)
 
     if os.path.exists(args.dev_data_path + ".pk"):
         dev_data_raw = load_data(args.dev_data_path + ".pk")
@@ -129,6 +127,7 @@ def main(args):
     best_score = {'epoch': float("-inf"), 'joint_acc': float("-inf"), 'op_acc': float("-inf"),
                   'final_slot_f1': float("-inf")}
 
+    best_epoch = 0
     for epoch in range(args.n_epochs):
         batch_loss = []
         model.train()
@@ -138,7 +137,6 @@ def main(args):
             # ignore dialogue with no trainable turns
             if len(train_data['input_ids']) == 0:
                 continue
-            print(train_data['input_ids'].shape)
 
             _inp = {"input_ids": train_data['input_ids'].to(device),
                     "attention_mask": train_data['attention_mask'].to(device),
@@ -161,27 +159,29 @@ def main(args):
                 print("[%d/%d] [%d/%d] mean_loss : %.3f" % (epoch + 1, args.n_epochs, step, len(train_data_raw), np.mean(batch_loss)))
                 batch_loss = []
     #
-        # if (epoch + 1) % args.eval_epoch == 0:
-        #     evaluate_span(dev_data_raw, tokenizer, ontology, slot_meta)
-        #     eval_res, res_per_domain, pred = model_evaluation(model, dev_data_raw, tokenizer, slot_meta, epoch + 1, args.op_code)
+        if (epoch + 1) % args.eval_epoch == 0:
+            eval_res, res_per_domain, pred  = evaluate_span(model, dev_data_raw, tokenizer, ontology, slot_meta, epoch+1)
     #
-    #         if eval_res['joint_acc'] > best_score['joint_acc']:
-    #             best_score = eval_res
-    #             model_to_save = model.module if hasattr(model, 'module') else model
-    #             save_path = os.path.join(args.out_dir, args.filename + '.bin')
-    #             torch.save(model_to_save.state_dict(), save_path)
-    #         print("Best Score : ", best_score)
-    #         print("\n")
-    #
-    # print("Test using best model...")
-    # best_epoch = best_score['epoch']
-    # ckpt_path = os.path.join(args.out_dir, args.filename + '.bin')
-    #
-    # best_epoch = 0 #dummpy
-    # eval_res, res_per_domain, pred = model_evaluation(model, test_data_raw, tokenizer, slot_meta, best_epoch, args.op_code)
-    # # save to file
-    # save_result_to_file(args.out_dir + "/" + args.filename + ".res", eval_res, res_per_domain)
-    # json.dump(pred, open('%s.pred' % (args.out_dir + "/" + args.filename), 'w'))
+            if eval_res['joint_acc'] > best_score['joint_acc']:
+                best_score = eval_res
+                model_to_save = model.module if hasattr(model, 'module') else model
+                save_path = os.path.join(args.out_dir, args.filename + '.bin')
+                torch.save(model_to_save.state_dict(), save_path)
+                best_epoch = epoch + 1
+            print("Best Score : ", best_score)
+            print("\n")
+
+    print("Test using best model...")
+    ckpt_path = os.path.join(args.out_dir, args.filename + '.bin')
+    model = DST_SPAN.from_pretrained('bert-base-uncased')
+    ckpt = torch.load(ckpt_path, map_location='cpu')
+    model.load_state_dict(ckpt)
+    model.to(device)
+
+    eval_res, res_per_domain, pred = evaluate_span(model, dev_data_raw, tokenizer, ontology, slot_meta, best_epoch )
+    # save to file
+    save_result_to_file(args.out_dir + "/" + args.filename + ".res", eval_res, res_per_domain)
+    json.dump(pred, open('%s.pred' % (args.out_dir + "/" + args.filename), 'w'))
 
 
 if __name__ == "__main__":
@@ -209,7 +209,7 @@ if __name__ == "__main__":
     parser.add_argument("--dec_warmup", default=0.1, type=float)
     parser.add_argument("--enc_lr", default=4e-5, type=float)
     parser.add_argument("--dec_lr", default=1e-4, type=float)
-    parser.add_argument("--n_epochs", default=1, type=int)
+    parser.add_argument("--n_epochs", default=30, type=int)
     parser.add_argument("--eval_epoch", default=1, type=int)
 
     parser.add_argument("--op_code", default="4", type=str)
@@ -230,7 +230,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     dataset = args.data_root.split("/")[1]
-    modelName = "som"
+    modelName = "span"
     timestamp = strftime('%Y_%m_%d_%H_%M_%S', localtime())
 
     filename = "%s_%s_e%d_%s" % (dataset, modelName, args.n_epochs, timestamp)

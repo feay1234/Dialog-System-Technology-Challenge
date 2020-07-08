@@ -5,6 +5,7 @@ from tqdm import tqdm
 from transformers import BertModel, BertPreTrainedModel
 import collections
 import numpy as np
+import time
 from utils.data_utils import prepare_dataset, MultiWozDataset, load_data, save_result_to_file
 from utils.data_utils import make_slot_meta, domain2id, OP_SET, make_turn_label, postprocessing
 from utils.eval_utils import compute_prf, compute_acc, per_domain_join_accuracy
@@ -211,44 +212,50 @@ def generate_train_data(train_data_raw, ontology, tokenizer):
 
 
 
-def generate_test_data(train_data_raw, tokenizer, ontology, slot_meta):
+def generate_test_data(instance, tokenizer, ontology, slot_meta):
     data = collections.defaultdict(list)
-    for idx, instance in enumerate(train_data_raw):
+    # for idx, instance in enumerate(train_data_raw):
         # gold_slots = set(["-".join(g.split("-")[:-1]) for g in instance.gold_state])
-        input_ids, token_type_ids, attention_masks = [], [], []
+    input_ids, token_type_ids, attention_masks = [], [], []
 
-        for slot in ontology:
-            input_id, token_type_id, attention_mask_id, _, _ = preprocess(tokenizer, instance.turn_utter, slot)
-            input_ids.append(input_id)
-            token_type_ids.append(token_type_id)
-            attention_masks.append(attention_mask_id)
+    for slot in ontology:
+        input_id, token_type_id, attention_mask_id, _, _ = preprocess(tokenizer, instance.turn_utter, slot)
+        input_ids.append(input_id)
+        token_type_ids.append(token_type_id)
+        attention_masks.append(attention_mask_id)
 
-        gold_slot_value = {'-'.join(ii.split('-')[:-1]): ii.split('-')[-1] for ii in instance.gold_state}
-        ops = []
-        for j, slot in enumerate(slot_meta):
-            if slot not in gold_slot_value:
-                ops.append("none")
-            else:
-                ops.append("update" if gold_slot_value[slot] != "dontcare" else "dontcare")
+    gold_slot_value = {'-'.join(ii.split('-')[:-1]): ii.split('-')[-1] for ii in instance.gold_state}
+    ops = []
+    for j, slot in enumerate(slot_meta):
+        if slot not in gold_slot_value:
+            ops.append("none")
+        else:
+            ops.append("update" if gold_slot_value[slot] != "dontcare" else "dontcare")
+    #
+    # data['input_ids'].append(input_ids)
+    # data['token_type_ids'].append(token_type_ids)
+    # data['attention_mask'].append(attention_masks)
+    # data['gold_state'].append(instance.gold_state)
+    # data['gold_op'].append(ops)
+    # data['is_last_turn'].append(instance.is_last_turn)
 
-        data['input_ids'].append(input_ids)
-        data['token_type_ids'].append(token_type_ids)
-        data['attention_mask'].append(attention_masks)
-        data['gold_state'].append(instance.gold_state)
-        data['gold_op'].append(ops)
-        data['is_last_turn'].append(instance.is_last_turn)
-
-        # if idx == 1:
-        #     break
+    data['input_ids'] = input_ids
+    data['token_type_ids'] = token_type_ids
+    data['attention_mask'] = attention_masks
+    data['gold_state'] = instance.gold_state
+    data['gold_op'] = ops
+    data['is_last_turn'] = instance.is_last_turn
+    data['turn_id'] = instance.turn_id
+    data['id'] = instance.id
+    data['turn_domain'] = instance.turn_domain
 
     for key in ['input_ids', 'token_type_ids', 'attention_mask']:
         data[key] = torch.tensor(np.array(data[key]))
     return data
 
 
-def evaluate_span(test_data_raw, tokenizer, ontology, slot_meta):
+def evaluate_span(model, test_data_raw, tokenizer, ontology, slot_meta, epoch):
 
-    id2op = {0: 'update', 1: 'none', 2: 'dontcare'}
     op2id = {'update': 0, 'none': 1, 'dontcare': 2}
 
     id2op = {v: k for k, v in op2id.items()}
@@ -261,113 +268,117 @@ def evaluate_span(test_data_raw, tokenizer, ontology, slot_meta):
     tp_dic = {k: 0 for k in op2id}
     fn_dic = {k: 0 for k in op2id}
     fp_dic = {k: 0 for k in op2id}
+    wall_times = []
+    results = {}
 
-    batch_size = 32
-    for step in tqdm(range(int(len(test_data_raw) / batch_size) + 1), desc="training"):
-        test_data = generate_test_data(test_data_raw[step*batch_size:(step*batch_size)+batch_size], tokenizer, ontology, slot_meta)
-        print(test_data['input_ids'].shape)
-        break
+    # batch_size = 32
+    for step in tqdm(range(len(test_data_raw)), desc="Evaluation"):
+        test_data = generate_test_data(test_data_raw[step], tokenizer, ontology, slot_meta)
+        _inp = {"input_ids": torch.tensor(test_data['input_ids']),
+                "attention_mask": torch.tensor(test_data["attention_mask"]),
+                "token_type_ids": torch.tensor(test_data["token_type_ids"])}
+    #
+        gold_op = test_data['gold_op']
+        gold_state = test_data['gold_state']
 
-    # for i in range(_batch_num):
-    #     _inp = {"input_ids": torch.tensor(test_data['input_ids'][i]),
-    #             "attention_mask": torch.tensor(test_data["attention_mask"][i]),
-    #             "token_type_ids": torch.tensor(test_data["token_type_ids"][i])}
+        start = time.perf_counter()
+        with torch.no_grad():
+            outputs = model(**_inp)
+        end = time.perf_counter()
+        wall_times.append(end - start)
+
+        # slot prediction
+        pred_op = [id2op[j] for j in np.argmax(outputs[0].detach().numpy(), 1)]
+        # pred_op[0] = 'update'
+        #
+        # # value prediction
+        pred_state = set()
+        for j, tmp in enumerate(zip(pred_op, slot_meta)):
+            _op, _slot = tmp
+            if _op == "none":
+                continue
+            elif _op == "dontcare":
+                pred_state.add(_slot + "-" + _op)
+            else:
+                # get span prediction to text
+                all_tokens = tokenizer.convert_ids_to_tokens(test_data['input_ids'].numpy()[j])
+                start = np.argmax(outputs[1][j].detach().numpy())
+                end = np.argmax(outputs[2][j].detach().numpy())
+                span = ' '.join(all_tokens[start: end + 1])
+                pred_state.add(_slot + "-" + span)
+
+
+        if set(pred_state) == set(gold_state):
+            joint_acc += 1
+        key = str(test_data['id']) + '_' + str(test_data['turn_id'])
+
+        results[key] = [list(pred_state), gold_state]
+
+        # Compute prediction slot accuracy
+        temp_acc = compute_acc(set(gold_state), set(pred_state), slot_meta)
+        slot_turn_acc += temp_acc
+
+        # Compute prediction F1 score
+        temp_f1, temp_r, temp_p, count = compute_prf(gold_state, pred_state)
+        slot_F1_pred += temp_f1
+        slot_F1_count += count
+
+        # Compute operation accuracy
+        temp_acc = sum([1 if p == g else 0 for p, g in zip(pred_op, gold_op)]) / len(pred_op)
+        op_acc += temp_acc
+
+        if test_data['is_last_turn']:
+            final_count += 1
+            if set(pred_state) == set(gold_state):
+                final_joint_acc += 1
+            final_slot_F1_pred += temp_f1
+            final_slot_F1_count += count
+
+        # Compute operation F1 score
+        for p, g in zip(pred_op, gold_op):
+            all_op_F1_count[g] += 1
+            if p == g:
+                tp_dic[g] += 1
+                op_F1_count[g] += 1
+            else:
+                fn_dic[g] += 1
+                fp_dic[p] += 1
     #
-    #     gold_op = test_data['gold_op'][i]
-    #     gold_state = test_data['gold_state'][i]
-    #     outputs = model(**_inp)
-    #
-    #     # slot prediction
-    #     pred_op = [id2op[j] for j in np.argmax(outputs[0].detach().numpy(), 1)]
-    #     pred_op[0] = 'update'
-    #
-    #     # value prediction
-    #     pred_state = set()
-    #     for j, tmp in enumerate(zip(pred_op, slot_meta)):
-    #         _op, _slot = tmp
-    #         if _op == "none":
-    #             continue
-    #         elif _op == "dontcare":
-    #             pred_state.add(_slot + "-" + _op)
-    #         else:
-    #             # get span prediction to text
-    #             all_tokens = tokenizer.convert_ids_to_tokens(test_data['input_ids'][i].numpy()[j])
-    #             start = np.argmax(outputs[1][j].detach().numpy())
-    #             end = np.argmax(outputs[2][j].detach().numpy())
-    #             span = ' '.join(all_tokens[start: end + 1])
-    #             pred_state.add(_slot + "-" + span)
-    #
-    #     slot = "-".join(tmp[:-1])
-    #     value = tmp[-1]
-    #
-    #     # Compute prediction slot accuracy
-    #     temp_acc = compute_acc(set(gold_state), set(pred_state), slot_meta)
-    #     slot_turn_acc += temp_acc
-    #
-    #     # Compute prediction F1 score
-    #     temp_f1, temp_r, temp_p, count = compute_prf(gold_state, pred_state)
-    #     slot_F1_pred += temp_f1
-    #     slot_F1_count += count
-    #
-    #     # Compute operation accuracy
-    #     temp_acc = sum([1 if p == g else 0 for p, g in zip(pred_op, gold_op)]) / len(pred_op)
-    #     op_acc += temp_acc
-    #
-    #     if test_data['is_last_turn'][i]:
-    #         final_count += 1
-    #         if set(pred_state) == set(gold_state):
-    #             final_joint_acc += 1
-    #         final_slot_F1_pred += temp_f1
-    #         final_slot_F1_count += count
-    #
-    #     # Compute operation F1 score
-    #     for p, g in zip(pred_op, gold_op):
-    #         all_op_F1_count[g] += 1
-    #         if p == g:
-    #             tp_dic[g] += 1
-    #             op_F1_count[g] += 1
-    #         else:
-    #             fn_dic[g] += 1
-    #             fp_dic[p] += 1
-    #
-    # joint_acc_score = joint_acc / len(test_data)
-    # turn_acc_score = slot_turn_acc / len(test_data)
-    # slot_F1_score = slot_F1_pred / slot_F1_count
-    # op_acc_score = op_acc / len(test_data)
-    # final_joint_acc_score = final_joint_acc / final_count
-    # final_slot_F1_score = final_slot_F1_pred / final_slot_F1_count
-    # latency = np.mean(wall_times) * 1000
-    # op_F1_score = {}
-    # for k in op2id.keys():
-    #     tp = tp_dic[k]
-    #     fn = fn_dic[k]
-    #     fp = fp_dic[k]
-    #     precision = tp / (tp + fp) if (tp + fp) != 0 else 0
-    #     recall = tp / (tp + fn) if (tp + fn) != 0 else 0
-    #     F1 = 2 * precision * recall / float(precision + recall) if (precision + recall) != 0 else 0
-    #     op_F1_score[k] = F1
-    #
+    joint_acc_score = joint_acc / len(test_data)
+    turn_acc_score = slot_turn_acc / len(test_data)
+    slot_F1_score = slot_F1_pred / slot_F1_count
+    op_acc_score = op_acc / len(test_data)
+    final_joint_acc_score = final_joint_acc / final_count
+    final_slot_F1_score = final_slot_F1_pred / final_slot_F1_count
+    latency = np.mean(wall_times) * 1000
+    op_F1_score = {}
+    for k in op2id.keys():
+        tp = tp_dic[k]
+        fn = fn_dic[k]
+        fp = fp_dic[k]
+        precision = tp / (tp + fp) if (tp + fp) != 0 else 0
+        recall = tp / (tp + fn) if (tp + fn) != 0 else 0
+        F1 = 2 * precision * recall / float(precision + recall) if (precision + recall) != 0 else 0
+        op_F1_score[k] = F1
+
     # print("------------------------------")
-    # print('op_code: %s, is_gt_op: %s, is_gt_p_state: %s, is_gt_gen: %s' % \
-    #       (op_code, str(is_gt_op), str(is_gt_p_state), str(is_gt_gen)))
-    # print("Epoch %d joint accuracy : " % epoch, joint_acc_score)
-    # print("Epoch %d slot turn accuracy : " % epoch, turn_acc_score)
-    # print("Epoch %d slot turn F1: " % epoch, slot_F1_score)
-    # print("Epoch %d op accuracy : " % epoch, op_acc_score)
-    # print("Epoch %d op F1 : " % epoch, op_F1_score)
-    # print("Epoch %d op hit count : " % epoch, op_F1_count)
-    # print("Epoch %d op all count : " % epoch, all_op_F1_count)
-    # print("Final Joint Accuracy : ", final_joint_acc_score)
-    # print("Final slot turn F1 : ", final_slot_F1_score)
-    # print("Latency Per Prediction : %f ms" % latency)
-    # print("-----------------------------\n")
-    # # json.dump(results, open('preds_%d.json' % epoch, 'w'))
-    # res_per_domain = per_domain_join_accuracy(results, slot_meta)
+    print("Epoch %d joint accuracy : " % epoch, joint_acc_score)
+    print("Epoch %d slot turn accuracy : " % epoch, turn_acc_score)
+    print("Epoch %d slot turn F1: " % epoch, slot_F1_score)
+    print("Epoch %d op accuracy : " % epoch, op_acc_score)
+    print("Epoch %d op F1 : " % epoch, op_F1_score)
+    print("Epoch %d op hit count : " % epoch, op_F1_count)
+    print("Epoch %d op all count : " % epoch, all_op_F1_count)
+    print("Final Joint Accuracy : ", final_joint_acc_score)
+    print("Final slot turn F1 : ", final_slot_F1_score)
+    print("Latency Per Prediction : %f ms" % latency)
+    print("-----------------------------\n")
+    res_per_domain = per_domain_join_accuracy(results, slot_meta)
     #
-    # scores = {'epoch': epoch, 'joint_acc': joint_acc_score,
-    #           'slot_acc': turn_acc_score, 'slot_f1': slot_F1_score,
-    #           'op_acc': op_acc_score, 'op_f1': op_F1_score, 'final_slot_f1': final_slot_F1_score}
-    # return scores, res_per_domain, results
+    scores = {'epoch': epoch, 'joint_acc': joint_acc_score,
+              'slot_acc': turn_acc_score, 'slot_f1': slot_F1_score,
+              'op_acc': op_acc_score, 'op_f1': op_F1_score, 'final_slot_f1': final_slot_F1_score}
+    return scores, res_per_domain, results
 
 
 
