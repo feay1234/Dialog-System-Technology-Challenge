@@ -69,6 +69,12 @@ def main(args):
                                          op_code=args.op_code)
 
     print("# train examples %d" % len(train_data_raw))
+    maxlen = 0
+    for i in range(len(train_data_raw)):
+
+        maxlen = max(maxlen, len(train_data_raw[i].turn_utter.split()))
+    print(maxlen)
+
 
     if os.path.exists(args.dev_data_path + ".pk"):
         dev_data_raw = load_data(args.dev_data_path + ".pk")
@@ -127,7 +133,6 @@ def main(args):
         batch_loss = []
         model.train()
         for step in tqdm(range(int(len(train_data_raw) / args.batch_size) + 1), desc="training"):
-        #
             train_data = generate_train_data(train_data_raw[step * args.batch_size:(step * args.batch_size) + args.batch_size], ontology, tokenizer)
 
             # ignore dialogue with no trainable turns
@@ -198,7 +203,8 @@ if __name__ == "__main__":
 
     parser.add_argument("--random_seed", default=42, type=int)
     parser.add_argument("--num_workers", default=4, type=int)
-    parser.add_argument("--batch_size", default=32, type=int)
+    # parser.add_argument("--batch_size", default=32, type=int)
+    parser.add_argument("--batch_size", default=2, type=int)
     parser.add_argument("--enc_warmup", default=0.1, type=float)
     parser.add_argument("--dec_warmup", default=0.1, type=float)
     parser.add_argument("--enc_lr", default=4e-5, type=float)
