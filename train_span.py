@@ -128,68 +128,62 @@ def main(args):
                   'final_slot_f1': float("-inf")}
 
     best_epoch = 0
-    maxlen = 0
     for epoch in range(args.n_epochs):
         batch_loss = []
         model.train()
         # for step in tqdm(range(int(len(train_data_raw) / args.batch_size) + 1), desc="training"):
         #     train_data = generate_train_data(train_data_raw[step * args.batch_size:(step * args.batch_size) + args.batch_size], ontology, tokenizer)
         for step in tqdm(range(len(train_data_raw)), desc="training"):
-            # train_data = generate_train_data(train_data_raw[step: step+1], ontology, tokenizer)
-            inp = tokenizer(train_data_raw[step].turn_utter)
+            train_data = generate_train_data(train_data_raw[step: step+1], ontology, tokenizer)
 
-            # print(inp)
-            maxlen = max(maxlen, len(inp['input_ids']))
-            print(maxlen)
+            # ignore dialogue with no trainable turns
+            if len(train_data['input_ids']) == 0:
+                continue
 
-    #         # ignore dialogue with no trainable turns
-    #         if len(train_data['input_ids']) == 0:
-    #             continue
+            _inp = {"input_ids": train_data['input_ids'].to(device),
+                    "attention_mask": train_data['attention_mask'].to(device),
+                    "token_type_ids": train_data['token_type_ids'].to(device),
+                    "start_positions": train_data['start_positions'].to(device),
+                    "end_positions": train_data['end_positions'].to(device),
+                    "span_mask": train_data['span_mask'].to(device),
+                    "slot_label": train_data['slot_label'].to(device)}
+
+            outputs = model(**_inp)
+
+            loss = outputs[0].mean()
+            batch_loss.append(loss.item())
+
+            loss.backward()
+            optimizer.step()
+            model.zero_grad()
+        #
+            if step % 100 == 0:
+                print("[%d/%d] [%d/%d] mean_loss : %.3f" % (epoch + 1, args.n_epochs, step, len(train_data_raw), np.mean(batch_loss)))
+                batch_loss = []
     #
-    #         _inp = {"input_ids": train_data['input_ids'].to(device),
-    #                 "attention_mask": train_data['attention_mask'].to(device),
-    #                 "token_type_ids": train_data['token_type_ids'].to(device),
-    #                 "start_positions": train_data['start_positions'].to(device),
-    #                 "end_positions": train_data['end_positions'].to(device),
-    #                 "span_mask": train_data['span_mask'].to(device),
-    #                 "slot_label": train_data['slot_label'].to(device)}
+        if (epoch + 1) % args.eval_epoch == 0:
+            eval_res, res_per_domain, pred  = evaluate_span(model, dev_data_raw, tokenizer, ontology, slot_meta, epoch+1)
     #
-    #         outputs = model(**_inp)
-    #
-    #         loss = outputs[0].mean()
-    #         batch_loss.append(loss.item())
-    #
-    #         loss.backward()
-    #         optimizer.step()
-    #         model.zero_grad()
-    #     #
-    #         if step % 100 == 0:
-    #             print("[%d/%d] [%d/%d] mean_loss : %.3f" % (epoch + 1, args.n_epochs, step, len(train_data_raw), np.mean(batch_loss)))
-    #             batch_loss = []
-    # #
-    #     if (epoch + 1) % args.eval_epoch == 0:
-    #         eval_res, res_per_domain, pred  = evaluate_span(model, dev_data_raw, tokenizer, ontology, slot_meta, epoch+1)
-    # #
-    #         if eval_res['joint_acc'] > best_score['joint_acc']:
-    #             best_score = eval_res
-    #             model_to_save = model.module if hasattr(model, 'module') else model
-    #             save_path = os.path.join(args.out_dir, args.filename + '.bin')
-    #             torch.save(model_to_save.state_dict(), save_path)
-    #             best_epoch = epoch + 1
-    #         print("Best Score : ", best_score)
-    #         print("\n")
-    #
-    # print("Test using best model...")
-    # ckpt_path = os.path.join(args.out_dir, args.filename + '.bin')
-    # model = DST_SPAN.from_pretrained('bert-base-uncased')
-    # ckpt = torch.load(ckpt_path, map_location='cpu')
-    # model.load_state_dict(ckpt)
-    # model.to(device)
-    #
-    # eval_res, res_per_domain, pred = evaluate_span(model, dev_data_raw, tokenizer, ontology, slot_meta, best_epoch )
-    # # save to file
-    # save_result_to_file(args.out_dir + "/" + args.filename + ".res", eval_res, res_per_domain)
-    # json.dump(pred, open('%s.pred' % (args.out_dir + "/" + args.filename), 'w'))
+            if eval_res['joint_acc'] > best_score['joint_acc']:
+                best_score = eval_res
+                model_to_save = model.module if hasattr(model, 'module') else model
+                save_path = os.path.join(args.out_dir, args.filename + '.bin')
+                torch.save(model_to_save.state_dict(), save_path)
+                best_epoch = epoch + 1
+            print("Best Score : ", best_score)
+            print("\n")
+
+    print("Test using best model...")
+    ckpt_path = os.path.join(args.out_dir, args.filename + '.bin')
+    model = DST_SPAN.from_pretrained('bert-base-uncased')
+    ckpt = torch.load(ckpt_path, map_location='cpu')
+    model.load_state_dict(ckpt)
+    model.to(device)
+
+    eval_res, res_per_domain, pred = evaluate_span(model, dev_data_raw, tokenizer, ontology, slot_meta, best_epoch )
+    # save to file
+    save_result_to_file(args.out_dir + "/" + args.filename + ".res", eval_res, res_per_domain)
+    json.dump(pred, open('%s.pred' % (args.out_dir + "/" + args.filename), 'w'))
 
 
 if __name__ == "__main__":
