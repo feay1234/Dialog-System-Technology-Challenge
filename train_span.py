@@ -133,6 +133,10 @@ def main(args):
 
             train_data = generate_train_data(train_data_raw[step:step+1], ontology, tokenizer)
 
+            # ignore dialogue with no trainable turns
+            if train_data['input_ids'].shape[0] == 0:
+                continue
+
             _inp = {"input_ids": train_data['input_ids'].to(device),
                     "attention_mask": train_data['attention_mask'].to(device),
                     "token_type_ids": train_data['token_type_ids'].to(device),

@@ -200,7 +200,7 @@ def generate_train_data(train_data_raw, ontology, tokenizer):
         # if idx == 20:
         #     break
 
-    print(torch.tensor(np.array(data["input_ids"])).shape)
+    # print(torch.tensor(np.array(data["input_ids"])).shape)
     for key in data:
         data[key] = torch.tensor(np.array(data[key]))
     return data
