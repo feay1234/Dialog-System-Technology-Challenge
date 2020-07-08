@@ -130,36 +130,36 @@ def main(args):
     best_epoch = 0
     for epoch in range(args.n_epochs):
         batch_loss = []
-        model.train()
-        # for step in tqdm(range(int(len(train_data_raw) / args.batch_size) + 1), desc="training"):
-        #     train_data = generate_train_data(train_data_raw[step * args.batch_size:(step * args.batch_size) + args.batch_size], ontology, tokenizer)
-        for step in tqdm(range(len(train_data_raw)), desc="training"):
-            train_data = generate_train_data(train_data_raw[step: step+1], ontology, tokenizer)
-
-            # ignore dialogue with no trainable turns
-            if len(train_data['input_ids']) == 0:
-                continue
-
-            _inp = {"input_ids": train_data['input_ids'].to(device),
-                    "attention_mask": train_data['attention_mask'].to(device),
-                    "token_type_ids": train_data['token_type_ids'].to(device),
-                    "start_positions": train_data['start_positions'].to(device),
-                    "end_positions": train_data['end_positions'].to(device),
-                    "span_mask": train_data['span_mask'].to(device),
-                    "slot_label": train_data['slot_label'].to(device)}
-
-            outputs = model(**_inp)
-
-            loss = outputs[0].mean()
-            batch_loss.append(loss.item())
-
-            loss.backward()
-            optimizer.step()
-            model.zero_grad()
+        # model.train()
+        # # for step in tqdm(range(int(len(train_data_raw) / args.batch_size) + 1), desc="training"):
+        # #     train_data = generate_train_data(train_data_raw[step * args.batch_size:(step * args.batch_size) + args.batch_size], ontology, tokenizer)
+        # for step in tqdm(range(len(train_data_raw)), desc="training"):
+        #     train_data = generate_train_data(train_data_raw[step: step+1], ontology, tokenizer)
         #
-            if step % 100 == 0:
-                print("[%d/%d] [%d/%d] mean_loss : %.3f" % (epoch + 1, args.n_epochs, step, len(train_data_raw), np.mean(batch_loss)))
-                batch_loss = []
+        #     # ignore dialogue with no trainable turns
+        #     if len(train_data['input_ids']) == 0:
+        #         continue
+        #
+        #     _inp = {"input_ids": train_data['input_ids'].to(device),
+        #             "attention_mask": train_data['attention_mask'].to(device),
+        #             "token_type_ids": train_data['token_type_ids'].to(device),
+        #             "start_positions": train_data['start_positions'].to(device),
+        #             "end_positions": train_data['end_positions'].to(device),
+        #             "span_mask": train_data['span_mask'].to(device),
+        #             "slot_label": train_data['slot_label'].to(device)}
+        #
+        #     outputs = model(**_inp)
+        #
+        #     loss = outputs[0].mean()
+        #     batch_loss.append(loss.item())
+        #
+        #     loss.backward()
+        #     optimizer.step()
+        #     model.zero_grad()
+        # #
+        #     if step % 100 == 0:
+        #         print("[%d/%d] [%d/%d] mean_loss : %.3f" % (epoch + 1, args.n_epochs, step, len(train_data_raw), np.mean(batch_loss)))
+        #         batch_loss = []
     #
         if (epoch + 1) % args.eval_epoch == 0:
             eval_res, res_per_domain, pred  = evaluate_span(model, dev_data_raw, tokenizer, ontology, slot_meta, epoch+1)
