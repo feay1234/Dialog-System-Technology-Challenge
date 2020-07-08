@@ -162,7 +162,7 @@ def main(args):
         #         batch_loss = []
     #
         if (epoch + 1) % args.eval_epoch == 0:
-            eval_res, res_per_domain, pred  = evaluate_span(model, dev_data_raw, tokenizer, ontology, slot_meta, epoch+1)
+            eval_res, res_per_domain, pred  = evaluate_span(model, dev_data_raw, tokenizer, ontology, slot_meta, epoch+1, device)
     #
             if eval_res['joint_acc'] > best_score['joint_acc']:
                 best_score = eval_res
@@ -180,7 +180,7 @@ def main(args):
     model.load_state_dict(ckpt)
     model.to(device)
 
-    eval_res, res_per_domain, pred = evaluate_span(model, dev_data_raw, tokenizer, ontology, slot_meta, best_epoch )
+    eval_res, res_per_domain, pred = evaluate_span(model, dev_data_raw, tokenizer, ontology, slot_meta, best_epoch, device)
     # save to file
     save_result_to_file(args.out_dir + "/" + args.filename + ".res", eval_res, res_per_domain)
     json.dump(pred, open('%s.pred' % (args.out_dir + "/" + args.filename), 'w'))

@@ -251,7 +251,7 @@ def generate_test_data(instance, tokenizer, ontology, slot_meta):
     return data
 
 
-def evaluate_span(model, test_data_raw, tokenizer, ontology, slot_meta, epoch):
+def evaluate_span(model, test_data_raw, tokenizer, ontology, slot_meta, epoch, device):
 
     op2id = {'update': 0, 'none': 2, 'dontcare': 1}
 
@@ -271,9 +271,9 @@ def evaluate_span(model, test_data_raw, tokenizer, ontology, slot_meta, epoch):
     # batch_size = 32
     for step in tqdm(range(len(test_data_raw)), desc="Evaluation"):
         test_data = generate_test_data(test_data_raw[step], tokenizer, ontology, slot_meta)
-        _inp = {"input_ids": torch.tensor(test_data['input_ids']),
-                "attention_mask": torch.tensor(test_data["attention_mask"]),
-                "token_type_ids": torch.tensor(test_data["token_type_ids"])}
+        _inp = {"input_ids": torch.tensor(test_data['input_ids'].to(device)),
+                "attention_mask": torch.tensor(test_data["attention_mask"].to(device)),
+                "token_type_ids": torch.tensor(test_data["token_type_ids"].to(device))}
     #
         gold_op = test_data['gold_op']
         gold_state = test_data['gold_state']
