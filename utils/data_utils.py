@@ -42,7 +42,20 @@ def save_data(data, filename):
 def save_result_to_file(filename, eval_res, res_per_domain):
     thefile = open(filename, 'a')
 
-    thefile.write("all,%f,%f\n" % (eval_res['slot_acc'], eval_res['joint_acc']))
+    # thefile.write("all,%f,%f\n" % (eval_res['slot_acc'], eval_res['joint_acc']))
+    epoch = eval_res['epoch']
+
+    thefile.write("Epoch %d joint accuracy,%f\n" % (epoch, eval_res['joint_acc_score']))
+    thefile.write("Epoch %d slot turn accuracy,%f\n" % (epoch, eval_res['turn_acc_score']))
+    thefile.write("Epoch %d slot turn F1,%f\n" % (epoch, eval_res['slot_F1_score']))
+    thefile.write("Epoch %d op accuracy,%f\n" % (epoch, eval_res['op_acc_score']))
+    thefile.write("Epoch %d op F1,%s\n" % (epoch, eval_res['op_F1_score']))
+    thefile.write("Epoch %d op hit count,%s\n" % (epoch, eval_res['op_F1_count']))
+    thefile.write("Epoch %d op all count,%s\n" % (epoch, eval_res['all_op_F1_count']))
+    thefile.write("Final Joint Accuracy,%f\n" % eval_res['final_joint_acc_score'])
+    thefile.write("Final slot turn F1,%f\n" % eval_res['final_slot_F1_score'])
+    thefile.write("Latency Per Prediction,%f ms\n" % eval_res['latency'])
+
     for res in res_per_domain:
         thefile.write("%s,%f,%f\n" % res)
     thefile.close()
@@ -214,9 +227,9 @@ def prepare_dataset(data_path, tokenizer, slot_meta,
             instance.make_instance(tokenizer)
             data.append(instance)
             last_dialog_state = turn_dialog_state
-        # if idx == 1:
-        #     break
-    save_data(data, data_path + ".pk")
+        if idx == 1:
+            break
+    # save_data(data, data_path + ".pk")
     return data
 
 class TrainingInstance:
