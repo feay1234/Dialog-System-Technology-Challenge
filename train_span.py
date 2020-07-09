@@ -216,7 +216,7 @@ if __name__ == "__main__":
     parser.add_argument("--save_dir", default='outputs', type=str)
     parser.add_argument("--out_dir", default='outputs', type=str)
     parser.add_argument('--enable_wdc', type=int, default=0)
-    parser.add_argument('--mode', type=str, default="pickspan")
+    parser.add_argument('--mode', type=str, default="span")
 
     parser.add_argument("--random_seed", default=42, type=int)
     parser.add_argument("--num_workers", default=4, type=int)
