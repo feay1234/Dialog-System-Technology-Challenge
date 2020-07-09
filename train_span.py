@@ -96,7 +96,7 @@ def main(args):
                                         op_code=args.op_code)
     print("# test examples %d" % len(test_data_raw))
 
-    model = DST_SPAN.from_pretrained('bert-base-uncased', args.mode)
+    model = DST_SPAN.from_pretrained('bert-base-uncased')
 
     if not os.path.exists(args.bert_ckpt_path):
         args.bert_ckpt_path = download_ckpt(args.bert_ckpt_path, args.bert_config_path, 'assets')
@@ -138,7 +138,7 @@ def main(args):
             if len(train_data['input_ids']) == 0:
                 continue
 
-            if model.mode == "span":
+            if args.mode == "span":
                 _inp = {"input_ids": train_data['input_ids'].to(device),
                         "attention_mask": train_data['attention_mask'].to(device),
                         "token_type_ids": train_data['token_type_ids'].to(device),
@@ -146,9 +146,9 @@ def main(args):
                         "end_positions": train_data['end_positions'].to(device),
                         "span_mask": train_data['span_mask'].to(device),
                         "slot_label": train_data['slot_label'].to(device)}
-            elif model.mode == "pick":
+            elif args.mode == "pick":
                 pass
-            elif model.mode == "pickspan":
+            elif args.mode == "pickspan":
                 _inp = {"input_ids": train_data['input_ids'].to(device),
                         "attention_mask": train_data['attention_mask'].to(device),
                         "token_type_ids": train_data['token_type_ids'].to(device),

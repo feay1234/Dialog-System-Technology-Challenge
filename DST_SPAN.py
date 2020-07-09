@@ -10,7 +10,7 @@ from utils.eval_utils import compute_prf, compute_acc, per_domain_join_accuracy
 
 
 class DST_SPAN(BertPreTrainedModel):
-    def __init__(self, config, mode="span"):
+    def __init__(self, config):
         super().__init__(config)
         self.num_labels = config.num_labels
 
@@ -20,8 +20,7 @@ class DST_SPAN(BertPreTrainedModel):
         self.binaryCLF = nn.Linear(config.hidden_size, 1)
 
         self.init_weights()
-
-        self.mode = mode
+        self.mode = "span"
 
     def forward(
             self,
