@@ -160,60 +160,60 @@ def main(args):
 
     for epoch in range(args.n_epochs):
         batch_loss = []
-        model.train()
-        pbar = tqdm(enumerate(train_dataloader), total=len(train_dataloader), desc="training", ncols=0)
-        for step, batch in pbar:
-            batch = [b.to(device) if not isinstance(b, int) else b for b in batch]
-            input_ids, input_mask, segment_ids, state_position_ids, op_ids, \
-            domain_ids, gen_ids, max_value, max_update = batch
-
-            if rng.random() < args.decoder_teacher_forcing:  # teacher forcing
-                teacher = gen_ids
-            else:
-                teacher = None
-
-            # print(input_ids.shap
-            domain_scores, state_scores, gen_scores = model(input_ids=input_ids,
-                                                            token_type_ids=segment_ids,
-                                                            state_positions=state_position_ids,
-                                                            attention_mask=input_mask,
-                                                            max_value=max_value,
-                                                            op_ids=op_ids,
-                                                            max_update=max_update,
-                                                            teacher=teacher)
-
-            # state_scores > 5,30,2
-            #
-            loss_s = loss_fnc(state_scores.view(-1, len(op2id)), op_ids.view(-1))
-            loss_g = masked_cross_entropy_for_value(gen_scores.contiguous(),
-                                                    gen_ids.contiguous(),
-                                                    tokenizer.vocab['[PAD]'])
-            # break
-            loss = loss_s + loss_g
-            if args.exclude_domain is not True:
-                loss_d = loss_fnc(domain_scores.view(-1, len(domain2id)), domain_ids.view(-1))
-                loss = loss + loss_d
-            batch_loss.append(loss.item())
-
-            loss.backward()
-            enc_optimizer.step()
-            enc_scheduler.step()
-            dec_optimizer.step()
-            dec_scheduler.step()
-            model.zero_grad()
-
-            if step % 100 == 0:
-                if args.exclude_domain is not True:
-                    print("[%d/%d] [%d/%d] mean_loss : %.3f, state_loss : %.3f, gen_loss : %.3f, dom_loss : %.3f" \
-                          % (epoch + 1, args.n_epochs, step,
-                             len(train_dataloader), np.mean(batch_loss),
-                             loss_s.item(), loss_g.item(), loss_d.item()))
-                else:
-                    print("[%d/%d] [%d/%d] mean_loss : %.3f, state_loss : %.3f, gen_loss : %.3f" \
-                          % (epoch + 1, args.n_epochs, step,
-                             len(train_dataloader), np.mean(batch_loss),
-                             loss_s.item(), loss_g.item()))
-                batch_loss = []
+        # model.train()
+        # pbar = tqdm(enumerate(train_dataloader), total=len(train_dataloader), desc="training", ncols=0)
+        # for step, batch in pbar:
+        #     batch = [b.to(device) if not isinstance(b, int) else b for b in batch]
+        #     input_ids, input_mask, segment_ids, state_position_ids, op_ids, \
+        #     domain_ids, gen_ids, max_value, max_update = batch
+        #
+        #     if rng.random() < args.decoder_teacher_forcing:  # teacher forcing
+        #         teacher = gen_ids
+        #     else:
+        #         teacher = None
+        #
+        #     # print(input_ids.shap
+        #     domain_scores, state_scores, gen_scores = model(input_ids=input_ids,
+        #                                                     token_type_ids=segment_ids,
+        #                                                     state_positions=state_position_ids,
+        #                                                     attention_mask=input_mask,
+        #                                                     max_value=max_value,
+        #                                                     op_ids=op_ids,
+        #                                                     max_update=max_update,
+        #                                                     teacher=teacher)
+        #
+        #     # state_scores > 5,30,2
+        #     #
+        #     loss_s = loss_fnc(state_scores.view(-1, len(op2id)), op_ids.view(-1))
+        #     loss_g = masked_cross_entropy_for_value(gen_scores.contiguous(),
+        #                                             gen_ids.contiguous(),
+        #                                             tokenizer.vocab['[PAD]'])
+        #     # break
+        #     loss = loss_s + loss_g
+        #     if args.exclude_domain is not True:
+        #         loss_d = loss_fnc(domain_scores.view(-1, len(domain2id)), domain_ids.view(-1))
+        #         loss = loss + loss_d
+        #     batch_loss.append(loss.item())
+        #
+        #     loss.backward()
+        #     enc_optimizer.step()
+        #     enc_scheduler.step()
+        #     dec_optimizer.step()
+        #     dec_scheduler.step()
+        #     model.zero_grad()
+        #
+        #     if step % 100 == 0:
+        #         if args.exclude_domain is not True:
+        #             print("[%d/%d] [%d/%d] mean_loss : %.3f, state_loss : %.3f, gen_loss : %.3f, dom_loss : %.3f" \
+        #                   % (epoch + 1, args.n_epochs, step,
+        #                      len(train_dataloader), np.mean(batch_loss),
+        #                      loss_s.item(), loss_g.item(), loss_d.item()))
+        #         else:
+        #             print("[%d/%d] [%d/%d] mean_loss : %.3f, state_loss : %.3f, gen_loss : %.3f" \
+        #                   % (epoch + 1, args.n_epochs, step,
+        #                      len(train_dataloader), np.mean(batch_loss),
+        #                      loss_s.item(), loss_g.item()))
+        #         batch_loss = []
 
         if (epoch + 1) % args.eval_epoch == 0:
             eval_res, res_per_domain, pred = model_evaluation(model, dev_data_raw, tokenizer, slot_meta, epoch + 1, args.op_code)
