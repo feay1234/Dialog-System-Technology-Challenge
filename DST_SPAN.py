@@ -6,13 +6,11 @@ from transformers import BertModel, BertPreTrainedModel
 import collections
 import numpy as np
 import time
-from utils.data_utils import prepare_dataset, MultiWozDataset, load_data, save_result_to_file
-from utils.data_utils import make_slot_meta, domain2id, OP_SET, make_turn_label, postprocessing
 from utils.eval_utils import compute_prf, compute_acc, per_domain_join_accuracy
 
 
 class DST_SPAN(BertPreTrainedModel):
-    def __init__(self, config):
+    def __init__(self, config, mode="span"):
         super().__init__(config)
         self.num_labels = config.num_labels
 
@@ -22,6 +20,8 @@ class DST_SPAN(BertPreTrainedModel):
         self.binaryCLF = nn.Linear(config.hidden_size, 1)
 
         self.init_weights()
+
+        self.mode = mode
 
     def forward(
             self,
@@ -93,8 +93,8 @@ class DST_SPAN(BertPreTrainedModel):
         return outputs
 
 
-def preprocess(tokenizer, context, slot=None, value=None):
-    max_len = 128
+def preprocess(tokenizer, context, slot=None, value=None, max_len=128):
+    # max_len = 128
     tokenized_context = tokenizer(context)
     if slot:
         tokenized_slot = tokenizer(slot)
@@ -136,7 +136,7 @@ def preprocess(tokenizer, context, slot=None, value=None):
     return input_ids, token_type_ids, attention_mask, start, end
 
 
-def generate_train_data(train_data_raw, ontology, tokenizer):
+def generate_train_data(train_data_raw, ontology, tokenizer, model):
     data = collections.defaultdict(list)
 
     for idx, instance in enumerate(train_data_raw):
@@ -157,49 +157,50 @@ def generate_train_data(train_data_raw, ontology, tokenizer):
             data['slot_label'].append(0 if value != "dontcare" else 1)
             data['slot_label'].append(2)
 
-            #             #   picklist case
-            #             cand_values = ontology[slot]
-            #             neg_value = np.random.choice(cand_values)
-            #             while neg_value == value or neg_value == "do n't care":
-            #                 neg_value = np.random.choice(cand_values)
+            #   picklist case
+            if "pick" in model.mode:
+                cand_values = ontology[slot]
+                neg_value = np.random.choice(cand_values)
+                while neg_value == value or neg_value == "do n't care":
+                    neg_value = np.random.choice(cand_values)
 
-            #             for val, label in [(value,1.0), (neg_value, 0.0)]:
-            #                 picklist_input_id, picklist_type_id, picklist_mask_id, _, _  = preprocess(val)
-            #                 data['value_input_ids'].append(picklist_input_id)
-            #                 data['value_token_type_ids'].append(picklist_type_id)
-            #                 data['value_attention_mask'].append(picklist_mask_id)
-            #                 data['value_label'].append(label)
+                for val, label in [(value,1.0), (neg_value, 0.0)]:
+                    picklist_input_id, picklist_type_id, picklist_mask_id, _, _  = preprocess(tokenizer, val)
+                    data['value_input_ids'].append(picklist_input_id)
+                    data['value_token_type_ids'].append(picklist_type_id)
+                    data['value_attention_mask'].append(picklist_mask_id)
+                    data['value_label'].append(label)
 
-            # #           span case
-            span_mask = []
-            if value in instance.turn_utter:
-                input_id, token_type_id, attention_mask_id, start, end = preprocess(tokenizer, instance.turn_utter,
-                                                                                    slot, value)
-                data['input_ids'].append(input_id)
-                data['token_type_ids'].append(token_type_id)
-                data['attention_mask'].append(attention_mask_id)
-                data['start_positions'].append(start)
-                data['end_positions'].append(end)
-                data['span_mask'].append(1.0)
-                input_id, token_type_id, attention_mask_id, start, end = preprocess(tokenizer, instance.turn_utter,
-                                                                                    neg_slot)
-                data['input_ids'].append(input_id)
-                data['token_type_ids'].append(token_type_id)
-                data['attention_mask'].append(attention_mask_id)
-                data['start_positions'].append(start)
-                data['end_positions'].append(end)
-                data['span_mask'].append(0.0)
-
-            else:
-                for sl in [slot, neg_slot]:
+            #  span case
+            if "span" in model.mode:
+                if value in instance.turn_utter:
                     input_id, token_type_id, attention_mask_id, start, end = preprocess(tokenizer, instance.turn_utter,
-                                                                                        sl)
+                                                                                        slot, value)
+                    data['input_ids'].append(input_id)
+                    data['token_type_ids'].append(token_type_id)
+                    data['attention_mask'].append(attention_mask_id)
+                    data['start_positions'].append(start)
+                    data['end_positions'].append(end)
+                    data['span_mask'].append(1.0)
+                    input_id, token_type_id, attention_mask_id, start, end = preprocess(tokenizer, instance.turn_utter,
+                                                                                        neg_slot)
                     data['input_ids'].append(input_id)
                     data['token_type_ids'].append(token_type_id)
                     data['attention_mask'].append(attention_mask_id)
                     data['start_positions'].append(start)
                     data['end_positions'].append(end)
                     data['span_mask'].append(0.0)
+
+                else:
+                    for sl in [slot, neg_slot]:
+                        input_id, token_type_id, attention_mask_id, start, end = preprocess(tokenizer, instance.turn_utter,
+                                                                                            sl)
+                        data['input_ids'].append(input_id)
+                        data['token_type_ids'].append(token_type_id)
+                        data['attention_mask'].append(attention_mask_id)
+                        data['start_positions'].append(start)
+                        data['end_positions'].append(end)
+                        data['span_mask'].append(0.0)
 
         # testing
         # if idx == 20:
@@ -211,7 +212,7 @@ def generate_train_data(train_data_raw, ontology, tokenizer):
     return data
 
 
-def generate_test_data(instance, tokenizer, ontology, slot_meta):
+def generate_test_data(instance, tokenizer, ontology, slot_meta, model):
     data = collections.defaultdict(list)
     # for idx, instance in enumerate(train_data_raw):
     # gold_slots = set(["-".join(g.split("-")[:-1]) for g in instance.gold_state])
@@ -271,11 +272,20 @@ def evaluate_span(model, test_data_raw, tokenizer, ontology, slot_meta, epoch, d
 
     # batch_size = 32
     for step in tqdm(range(len(test_data_raw)), desc="Evaluation"):
-        test_data = generate_test_data(test_data_raw[step], tokenizer, ontology, slot_meta)
-        _inp = {"input_ids": torch.tensor(test_data['input_ids'].to(device)),
-                "attention_mask": torch.tensor(test_data["attention_mask"].to(device)),
-                "token_type_ids": torch.tensor(test_data["token_type_ids"].to(device))}
-        #
+        test_data = generate_test_data(test_data_raw[step], tokenizer, ontology, slot_meta, model)
+        if model.mode == "span":
+            _inp = {"input_ids": torch.tensor(test_data['input_ids'].to(device)),
+                    "attention_mask": torch.tensor(test_data["attention_mask"].to(device)),
+                    "token_type_ids": torch.tensor(test_data["token_type_ids"].to(device))}
+            #
+        elif model.mode == "pickspan":
+            _inp = {"input_ids": torch.tensor(test_data['input_ids'].to(device)),
+                    "attention_mask": torch.tensor(test_data["attention_mask"].to(device)),
+                    "token_type_ids": torch.tensor(test_data["token_type_ids"].to(device)),
+                    "value_input_ids": torch.tensor(test_data['value_input_ids'].to(device)),
+                    "value_attention_mask": torch.tensor(test_data["value_attention_mask"].to(device)),
+                    "value_token_type_ids": torch.tensor(test_data["value_token_type_ids"].to(device))}
+
         gold_op = test_data['gold_op']
         gold_state = test_data['gold_state']
 
@@ -299,11 +309,14 @@ def evaluate_span(model, test_data_raw, tokenizer, ontology, slot_meta, epoch, d
                 pred_state.add(_slot + "-" + _op)
             else:
                 # get span prediction to text
-                all_tokens = tokenizer.convert_ids_to_tokens(test_data['input_ids'].numpy()[j])
-                start = np.argmax(outputs[1][j].cpu().data.numpy())
-                end = np.argmax(outputs[2][j].cpu().data.numpy())
-                span = ' '.join(all_tokens[start: end + 1])
-                pred_state.add(_slot + "-" + span)
+                if model.mode == "span":
+                    all_tokens = tokenizer.convert_ids_to_tokens(test_data['input_ids'].numpy()[j])
+                    start = np.argmax(outputs[1][j].cpu().data.numpy())
+                    end = np.argmax(outputs[2][j].cpu().data.numpy())
+                    span = ' '.join(all_tokens[start: end + 1])
+                    pred_state.add(_slot + "-" + span)
+                elif model.mode == "pickspan":
+                    pass
 
         if set(pred_state) == set(gold_state):
             joint_acc += 1

@@ -96,7 +96,7 @@ def main(args):
                                         op_code=args.op_code)
     print("# test examples %d" % len(test_data_raw))
 
-    model = DST_SPAN.from_pretrained('bert-base-uncased')
+    model = DST_SPAN.from_pretrained('bert-base-uncased', args.mode)
 
     if not os.path.exists(args.bert_ckpt_path):
         args.bert_ckpt_path = download_ckpt(args.bert_ckpt_path, args.bert_config_path, 'assets')
@@ -132,19 +132,35 @@ def main(args):
         batch_loss = []
         model.train()
         for step in tqdm(range(len(train_data_raw)), desc="training"):
-            train_data = generate_train_data(train_data_raw[step: step+1], ontology, tokenizer)
+            train_data = generate_train_data(train_data_raw[step: step+1], ontology, tokenizer, model)
 
             # ignore dialogue with no trainable turns
             if len(train_data['input_ids']) == 0:
                 continue
 
-            _inp = {"input_ids": train_data['input_ids'].to(device),
-                    "attention_mask": train_data['attention_mask'].to(device),
-                    "token_type_ids": train_data['token_type_ids'].to(device),
-                    "start_positions": train_data['start_positions'].to(device),
-                    "end_positions": train_data['end_positions'].to(device),
-                    "span_mask": train_data['span_mask'].to(device),
-                    "slot_label": train_data['slot_label'].to(device)}
+            if model.mode == "span":
+                _inp = {"input_ids": train_data['input_ids'].to(device),
+                        "attention_mask": train_data['attention_mask'].to(device),
+                        "token_type_ids": train_data['token_type_ids'].to(device),
+                        "start_positions": train_data['start_positions'].to(device),
+                        "end_positions": train_data['end_positions'].to(device),
+                        "span_mask": train_data['span_mask'].to(device),
+                        "slot_label": train_data['slot_label'].to(device)}
+            elif model.mode == "pick":
+                pass
+            elif model.mode == "pickspan":
+                _inp = {"input_ids": train_data['input_ids'].to(device),
+                        "attention_mask": train_data['attention_mask'].to(device),
+                        "token_type_ids": train_data['token_type_ids'].to(device),
+                        "start_positions": train_data['start_positions'].to(device),
+                        "end_positions": train_data['end_positions'].to(device),
+                        "span_mask": train_data['span_mask'].to(device),
+                        "slot_label": train_data['slot_label'].to(device),
+                        "value_input_ids": train_data['value_input_ids'].to(device),
+                        "value_attention_mask": train_data['value_attention_mask'].to(device),
+                        "value_token_type_ids": train_data['value_token_type_ids'].to(device),
+                        "value_label": train_data['value_slot_label'].to(device)}
+
 
             outputs = model(**_inp)
 
@@ -200,6 +216,7 @@ if __name__ == "__main__":
     parser.add_argument("--save_dir", default='outputs', type=str)
     parser.add_argument("--out_dir", default='outputs', type=str)
     parser.add_argument('--enable_wdc', type=int, default=0)
+    parser.add_argument('--mode', type=str, default="pickspan")
 
     parser.add_argument("--random_seed", default=42, type=int)
     parser.add_argument("--num_workers", default=4, type=int)
@@ -230,7 +247,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     dataset = args.data_root.split("/")[1]
-    modelName = "span"
+    modelName = "dst_" + args.mode
     timestamp = strftime('%Y_%m_%d_%H_%M_%S', localtime())
 
     filename = "%s_%s_e%d_%s" % (dataset, modelName, args.n_epochs, timestamp)
