@@ -124,15 +124,13 @@ def main(args):
     # if n_gpu > 1:
     #     model = torch.nn.DataParallel(model)
 
-    best_score = {'epoch': float("-inf"), 'joint_acc': float("-inf"), 'op_acc': float("-inf"),
+    best_score = {'epoch': float("-inf"), 'joint_acc_score': float("-inf"), 'op_acc': float("-inf"),
                   'final_slot_f1': float("-inf")}
 
     best_epoch = 0
     for epoch in range(args.n_epochs):
         batch_loss = []
         model.train()
-        # for step in tqdm(range(int(len(train_data_raw) / args.batch_size) + 1), desc="training"):
-        #     train_data = generate_train_data(train_data_raw[step * args.batch_size:(step * args.batch_size) + args.batch_size], ontology, tokenizer)
         for step in tqdm(range(len(train_data_raw)), desc="training"):
             train_data = generate_train_data(train_data_raw[step: step+1], ontology, tokenizer)
 
@@ -164,13 +162,13 @@ def main(args):
         if (epoch + 1) % args.eval_epoch == 0:
             eval_res, res_per_domain, pred  = evaluate_span(model, dev_data_raw, tokenizer, ontology, slot_meta, epoch+1, device)
     #
-            if eval_res['joint_acc'] > best_score['joint_acc']:
-                best_score = eval_res
+            if eval_res['joint_acc_score'] > best_score['joint_acc_score']:
+                best_score['joint_acc_score'] = eval_res['joint_acc_score']
                 model_to_save = model.module if hasattr(model, 'module') else model
                 save_path = os.path.join(args.out_dir, args.filename + '.bin')
                 torch.save(model_to_save.state_dict(), save_path)
                 best_epoch = epoch + 1
-            print("Best Score : ", best_score)
+            print("Best Score : ", best_score['joint_acc_score'])
             print("\n")
 
     print("Test using best model...")
@@ -211,7 +209,7 @@ if __name__ == "__main__":
     parser.add_argument("--dec_warmup", default=0.1, type=float)
     parser.add_argument("--enc_lr", default=4e-5, type=float)
     parser.add_argument("--dec_lr", default=1e-4, type=float)
-    parser.add_argument("--n_epochs", default=30, type=int)
+    parser.add_argument("--n_epochs", default=1, type=int)
     parser.add_argument("--eval_epoch", default=1, type=int)
 
     parser.add_argument("--op_code", default="4", type=str)

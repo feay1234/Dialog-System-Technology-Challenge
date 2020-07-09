@@ -10,6 +10,7 @@ from utils.data_utils import prepare_dataset, MultiWozDataset, load_data, save_r
 from utils.data_utils import make_slot_meta, domain2id, OP_SET, make_turn_label, postprocessing
 from utils.eval_utils import compute_prf, compute_acc, per_domain_join_accuracy
 
+
 class DST_SPAN(BertPreTrainedModel):
     def __init__(self, config):
         super().__init__(config)
@@ -92,9 +93,6 @@ class DST_SPAN(BertPreTrainedModel):
         return outputs
 
 
-
-
-
 def preprocess(tokenizer, context, slot=None, value=None):
     max_len = 128
     tokenized_context = tokenizer(context)
@@ -175,14 +173,16 @@ def generate_train_data(train_data_raw, ontology, tokenizer):
             # #           span case
             span_mask = []
             if value in instance.turn_utter:
-                input_id, token_type_id, attention_mask_id, start, end = preprocess(tokenizer, instance.turn_utter, slot, value)
+                input_id, token_type_id, attention_mask_id, start, end = preprocess(tokenizer, instance.turn_utter,
+                                                                                    slot, value)
                 data['input_ids'].append(input_id)
                 data['token_type_ids'].append(token_type_id)
                 data['attention_mask'].append(attention_mask_id)
                 data['start_positions'].append(start)
                 data['end_positions'].append(end)
                 data['span_mask'].append(1.0)
-                input_id, token_type_id, attention_mask_id, start, end = preprocess(tokenizer, instance.turn_utter, neg_slot)
+                input_id, token_type_id, attention_mask_id, start, end = preprocess(tokenizer, instance.turn_utter,
+                                                                                    neg_slot)
                 data['input_ids'].append(input_id)
                 data['token_type_ids'].append(token_type_id)
                 data['attention_mask'].append(attention_mask_id)
@@ -192,7 +192,8 @@ def generate_train_data(train_data_raw, ontology, tokenizer):
 
             else:
                 for sl in [slot, neg_slot]:
-                    input_id, token_type_id, attention_mask_id, start, end = preprocess(tokenizer, instance.turn_utter, sl)
+                    input_id, token_type_id, attention_mask_id, start, end = preprocess(tokenizer, instance.turn_utter,
+                                                                                        sl)
                     data['input_ids'].append(input_id)
                     data['token_type_ids'].append(token_type_id)
                     data['attention_mask'].append(attention_mask_id)
@@ -209,10 +210,11 @@ def generate_train_data(train_data_raw, ontology, tokenizer):
         data[key] = torch.tensor(np.array(data[key]))
     return data
 
+
 def generate_test_data(instance, tokenizer, ontology, slot_meta):
     data = collections.defaultdict(list)
     # for idx, instance in enumerate(train_data_raw):
-        # gold_slots = set(["-".join(g.split("-")[:-1]) for g in instance.gold_state])
+    # gold_slots = set(["-".join(g.split("-")[:-1]) for g in instance.gold_state])
     input_ids, token_type_ids, attention_masks = [], [], []
 
     for slot in ontology:
@@ -252,7 +254,6 @@ def generate_test_data(instance, tokenizer, ontology, slot_meta):
 
 
 def evaluate_span(model, test_data_raw, tokenizer, ontology, slot_meta, epoch, device):
-
     op2id = {'update': 0, 'none': 2, 'dontcare': 1}
 
     id2op = {v: k for k, v in op2id.items()}
@@ -274,7 +275,7 @@ def evaluate_span(model, test_data_raw, tokenizer, ontology, slot_meta, epoch, d
         _inp = {"input_ids": torch.tensor(test_data['input_ids'].to(device)),
                 "attention_mask": torch.tensor(test_data["attention_mask"].to(device)),
                 "token_type_ids": torch.tensor(test_data["token_type_ids"].to(device))}
-    #
+        #
         gold_op = test_data['gold_op']
         gold_state = test_data['gold_state']
 
@@ -303,7 +304,6 @@ def evaluate_span(model, test_data_raw, tokenizer, ontology, slot_meta, epoch, d
                 end = np.argmax(outputs[2][j].cpu().data.numpy())
                 span = ' '.join(all_tokens[start: end + 1])
                 pred_state.add(_slot + "-" + span)
-
 
         if set(pred_state) == set(gold_state):
             joint_acc += 1
@@ -341,10 +341,10 @@ def evaluate_span(model, test_data_raw, tokenizer, ontology, slot_meta, epoch, d
                 fn_dic[g] += 1
                 fp_dic[p] += 1
     #
-    joint_acc_score = joint_acc / len(test_data)
-    turn_acc_score = slot_turn_acc / len(test_data)
+    joint_acc_score = joint_acc / len(test_data_raw)
+    turn_acc_score = slot_turn_acc / len(test_data_raw)
     slot_F1_score = slot_F1_pred / slot_F1_count
-    op_acc_score = op_acc / len(test_data)
+    op_acc_score = op_acc / len(test_data_raw)
     final_joint_acc_score = final_joint_acc / final_count
     final_slot_F1_score = final_slot_F1_pred / final_slot_F1_count
     latency = np.mean(wall_times) * 1000
@@ -372,10 +372,11 @@ def evaluate_span(model, test_data_raw, tokenizer, ontology, slot_meta, epoch, d
     print("-----------------------------\n")
     res_per_domain = per_domain_join_accuracy(results, slot_meta)
     #
-    scores = {'epoch': epoch, 'joint_acc': joint_acc_score,
-              'slot_acc': turn_acc_score, 'slot_f1': slot_F1_score,
-              'op_acc': op_acc_score, 'op_f1': op_F1_score, 'final_slot_f1': final_slot_F1_score}
+    scores = {'epoch': epoch, 'joint_acc_score': joint_acc_score,
+              'turn_acc_score': turn_acc_score, 'slot_F1_score': slot_F1_score,
+              'op_acc_score': op_acc_score, 'op_F1_score': op_F1_score, 'op_F1_count': op_F1_count,
+              'all_op_F1_count': all_op_F1_count,
+              'final_joint_acc_score': final_joint_acc_score, 'final_slot_F1_score': final_slot_F1_score,
+              'latency': latency}
+
     return scores, res_per_domain, results
-
-
-
