@@ -1,8 +1,7 @@
 from tqdm import tqdm
 from time import strftime, localtime
 
-from DST_SPAN import DST_SPAN, generate_train_data, evaluate_span
-from model import SomDST
+from DST_PICK import DST_PICK
 from transformers import BertTokenizer, BertModel, AdamW
 
 from utils.ckpt_utils import download_ckpt
@@ -69,10 +68,6 @@ def main(args):
                                          op_code=args.op_code)
 
     print("# train examples %d" % len(train_data_raw))
-    # maxlen = 0
-    # for i in range(len(train_data_raw)):
-    #     maxlen = max(maxlen, len(train_data_raw[i].turn_utter.split()))
-    # print(maxlen)
 
     if os.path.exists(args.dev_data_path + ".pk"):
         dev_data_raw = load_data(args.dev_data_path + ".pk")
@@ -96,7 +91,7 @@ def main(args):
                                         op_code=args.op_code)
     print("# test examples %d" % len(test_data_raw))
 
-    model = DST_SPAN.from_pretrained('bert-base-uncased')
+    model = DST_PICK.from_pretrained('bert-base-uncased')
 
     if not os.path.exists(args.bert_ckpt_path):
         args.bert_ckpt_path = download_ckpt(args.bert_ckpt_path, args.bert_config_path, 'assets')
@@ -119,8 +114,6 @@ def main(args):
 
     model.to(device)
 
-    num_train_steps = int(len(train_data_raw) / args.batch_size * args.n_epochs)
-
     # if n_gpu > 1:
     #     model = torch.nn.DataParallel(model)
 
@@ -132,52 +125,28 @@ def main(args):
         batch_loss = []
         model.train()
         for step in tqdm(range(len(train_data_raw)), desc="training"):
-            train_data = generate_train_data(train_data_raw[step: step+1], ontology, tokenizer, model)
 
-            # ignore dialogue with no trainable turns
-            if len(train_data['input_ids']) == 0:
+            inp = model.generate_train_instances(train_data_raw[step], ontology, tokenizer, device)
+
+            # ignore dialog with no training slots
+            if not inp:
                 continue
 
-            if args.mode == "span":
-                _inp = {"input_ids": train_data['input_ids'].to(device),
-                        "attention_mask": train_data['attention_mask'].to(device),
-                        "token_type_ids": train_data['token_type_ids'].to(device),
-                        "start_positions": train_data['start_positions'].to(device),
-                        "end_positions": train_data['end_positions'].to(device),
-                        "span_mask": train_data['span_mask'].to(device),
-                        "slot_label": train_data['slot_label'].to(device)}
-            elif args.mode == "pick":
-                pass
-            elif args.mode == "pickspan":
-                _inp = {"input_ids": train_data['input_ids'].to(device),
-                        "attention_mask": train_data['attention_mask'].to(device),
-                        "token_type_ids": train_data['token_type_ids'].to(device),
-                        "start_positions": train_data['start_positions'].to(device),
-                        "end_positions": train_data['end_positions'].to(device),
-                        "span_mask": train_data['span_mask'].to(device),
-                        "slot_label": train_data['slot_label'].to(device),
-                        "value_input_ids": train_data['value_input_ids'].to(device),
-                        "value_attention_mask": train_data['value_attention_mask'].to(device),
-                        "value_token_type_ids": train_data['value_token_type_ids'].to(device),
-                        "value_label": train_data['value_slot_label'].to(device)}
-
-
-            outputs = model(**_inp)
-
-            loss = outputs[0].mean()
+            loss = model(**inp)
             batch_loss.append(loss.item())
 
             loss.backward()
             optimizer.step()
             model.zero_grad()
-        #
+
             if step % 100 == 0:
                 print("[%d/%d] [%d/%d] mean_loss : %.3f" % (epoch + 1, args.n_epochs, step, len(train_data_raw), np.mean(batch_loss)))
                 batch_loss = []
 
         if (epoch + 1) % args.eval_epoch == 0:
-            eval_res, res_per_domain, pred  = evaluate_span(model, dev_data_raw, tokenizer, ontology, slot_meta, epoch+1, device)
-    #
+            eval_res, res_per_domain, pred  = model.evaluate(dev_data_raw, tokenizer, ontology, slot_meta, epoch+1, device)
+
+            #
             if eval_res['joint_acc_score'] > best_score['joint_acc_score']:
                 best_score['joint_acc_score'] = eval_res['joint_acc_score']
                 model_to_save = model.module if hasattr(model, 'module') else model
@@ -189,12 +158,12 @@ def main(args):
 
     print("Test using best model...")
     ckpt_path = os.path.join(args.out_dir, args.filename + '.bin')
-    model = DST_SPAN.from_pretrained('bert-base-uncased')
+    model = DST_PICK.from_pretrained('bert-base-uncased')
     ckpt = torch.load(ckpt_path, map_location='cpu')
     model.load_state_dict(ckpt)
     model.to(device)
 
-    eval_res, res_per_domain, pred = evaluate_span(model, dev_data_raw, tokenizer, ontology, slot_meta, best_epoch, device)
+    eval_res, res_per_domain, pred = model.evaluate(dev_data_raw, tokenizer, ontology, slot_meta, best_epoch, device)
     # save to file
     save_result_to_file(args.out_dir + "/" + args.filename + ".res", eval_res, res_per_domain)
     json.dump(pred, open('%s.pred' % (args.out_dir + "/" + args.filename), 'w'))
@@ -215,8 +184,6 @@ if __name__ == "__main__":
     parser.add_argument("--bert_ckpt_path", default='assets/bert-base-uncased-pytorch_model.bin', type=str)
     parser.add_argument("--save_dir", default='outputs', type=str)
     parser.add_argument("--out_dir", default='outputs', type=str)
-    parser.add_argument('--enable_wdc', type=int, default=0)
-    parser.add_argument('--mode', type=str, default="span")
 
     parser.add_argument("--random_seed", default=42, type=int)
     parser.add_argument("--num_workers", default=4, type=int)
@@ -247,13 +214,13 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     dataset = args.data_root.split("/")[1]
-    modelName = "dst_" + args.mode
+    modelName = "dst_pick"
     timestamp = strftime('%Y_%m_%d_%H_%M_%S', localtime())
 
     filename = "%s_%s_e%d_%s" % (dataset, modelName, args.n_epochs, timestamp)
 
-    if args.enable_wdc:
-        filename = "%s_%s_wdc_e%d_%s" % (dataset, modelName, args.n_epochs, timestamp)
+    # if args.enable_wdc:
+    #     filename = "%s_%s_wdc_e%d_%s" % (dataset, modelName, args.n_epochs, timestamp)
 
     args.save_dir = os.path.join(args.save_dir, filename)
     args.filename = filename
