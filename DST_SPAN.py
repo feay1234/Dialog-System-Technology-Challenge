@@ -18,7 +18,8 @@ class DST_SPAN():
     def generate_train_data(self, train_data_raw, ontology):
         train_data = []
         for instance in train_data_raw:
-            context = instance.dialog_history + instance.turn_utter
+            # context = instance.dialog_history + instance.turn_utter
+            context = instance.turn_utter
             gold_slots = ["-".join(g.split("-")[:-1]) for g in instance.gold_state]
             gold_values = [g.split("-")[-1] for g in instance.gold_state]
 

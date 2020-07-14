@@ -174,7 +174,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     dataset = args.data_root.split("/")[1]
-    modelName = "dst_qa"
+    modelName = "dst_qa_short"
     timestamp = strftime('%Y_%m_%d_%H_%M_%S', localtime())
 
     filename = "%s_%s_e%d_%s" % (dataset, modelName, args.n_epochs, timestamp)
