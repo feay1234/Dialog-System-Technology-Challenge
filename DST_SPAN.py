@@ -63,7 +63,6 @@ class DST_SPAN():
         wall_times = []
         results = {}
 
-        # batch_size = 32
         for step in tqdm(range(len(test_data_raw)), desc="Evaluation"):
             instance = test_data_raw[step]
             context = instance.dialog_history + instance.turn_utter
@@ -84,19 +83,16 @@ class DST_SPAN():
 
             start = time.perf_counter()
             # prediction
-            with torch.no_grad():
-                outputs = self.model.predict(test_data)
+            outputs = self.model.predict(test_data)
             end = time.perf_counter()
             wall_times.append(end - start)
 
-
-
             # slot prediction
-            pred_op = ['none' if len(pred['answer']) == 0 else "pred" for pred in outputs]
+            pred_op = ['none' if len(pred['answer']) == 0 else "update" for pred in outputs]
 
             # # value prediction
             pred_state = set()
-            for pred, slot in enumerate(zip(outputs, slot_meta)):
+            for pred, slot in zip(outputs, slot_meta):
                 span = pred['answer']
                 if span == "":
                     pred_op.append("none")
@@ -108,7 +104,7 @@ class DST_SPAN():
 
             if set(pred_state) == set(gold_state):
                 joint_acc += 1
-            key = str(test_data['id']) + '_' + str(test_data['turn_id'])
+            key = str(instance.id) + '_' + str(instance.turn_id)
 
             results[key] = [list(pred_state), gold_state]
 

@@ -106,33 +106,25 @@ def main(args):
         batch_loss = []
 
         train_data = dst.generate_train_data(train_data_raw, ontology)
-        dst.model.train_model(train_data)
+        dst.model.train_model(train_data, show_running_loss=False)
 
 
         if (epoch + 1) % args.eval_epoch == 0:
 
-            eval_res, res_per_domain, pred  = dst.evaluate(dst, dev_data_raw, ontology, slot_meta, epoch+1)
-    #
-    #         if eval_res['joint_acc_score'] > best_score['joint_acc_score']:
-    #             best_score['joint_acc_score'] = eval_res['joint_acc_score']
-    #             model_to_save = model.module if hasattr(model, 'module') else model
-    #             save_path = os.path.join(args.out_dir, args.filename + '.bin')
-    #             torch.save(model_to_save.state_dict(), save_path)
-    #             best_epoch = epoch + 1
-    #         print("Best Score : ", best_score['joint_acc_score'])
-    #         print("\n")
-    #
-    # print("Test using best model...")
-    # ckpt_path = os.path.join(args.out_dir, args.filename + '.bin')
-    # model = DST_SPAN.from_pretrained('bert-base-uncased')
-    # ckpt = torch.load(ckpt_path, map_location='cpu')
-    # model.load_state_dict(ckpt)
-    # model.to(device)
+            eval_res, res_per_domain, pred  = dst.evaluate(dev_data_raw, ontology, slot_meta, epoch+1)
 
-    eval_res, res_per_domain, pred = dst.evaluate(test_data_raw, ontology, slot_meta, best_epoch)
-    # save to file
-    save_result_to_file(args.out_dir + "/" + args.filename + ".res", eval_res, res_per_domain)
-    json.dump(pred, open('%s.pred' % (args.out_dir + "/" + args.filename), 'w'))
+            if eval_res['joint_acc_score'] > best_score['joint_acc_score']:
+                best_score['joint_acc_score'] = eval_res['joint_acc_score']
+                best_epoch = epoch + 1
+
+                eval_res, res_per_domain, pred = dst.evaluate(test_data_raw, ontology, slot_meta, best_epoch)
+                # save to file
+                save_result_to_file(args.out_dir + "/" + args.filename + ".res", eval_res, res_per_domain)
+                json.dump(pred, open('%s.pred' % (args.out_dir + "/" + args.filename), 'w'))
+                print("Best Score : ", best_score['joint_acc_score'])
+
+            print("\n")
+    #
 
 
 if __name__ == "__main__":
