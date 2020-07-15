@@ -42,13 +42,13 @@ class DST_SPAN():
                             'answers': [
                                 {'text': value, 'answer_start': context.index(value) if value in context else 0}]})
                 # Negative slot
-                # neg_slot = np.random.choice(list(ontology.keys()))
-                # while slot == neg_slot or neg_slot in gold_slots:
-                #     neg_slot = np.random.choice(list(ontology.keys()))
+                neg_slot = np.random.choice(list(ontology.keys()))
+                while slot == neg_slot or neg_slot in gold_slots:
+                    neg_slot = np.random.choice(list(ontology.keys()))
 
-            for neg_slot in ontology.keys():
-                if neg_slot in gold_slots:
-                    continue
+            # for neg_slot in ontology.keys():
+            #     if neg_slot in gold_slots:
+            #         continue
                 qas.append({'id': did + "_neg_" + neg_slot,
                             'is_impossible': True,
                             'question': neg_slot.replace("-", " "),
