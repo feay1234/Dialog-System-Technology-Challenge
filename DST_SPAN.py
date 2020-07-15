@@ -29,30 +29,30 @@ class DST_SPAN():
             gold_slots = ["-".join(g.split("-")[:-1]) for g in turn_state]
             gold_values = [g.split("-")[-1] for g in turn_state]
 
-            for epoch in range(args.n_epochs):
-                qas = []
-                for sid, gold in enumerate(zip(gold_slots, gold_values)):
-                    slot, value = gold
-                    did = "%s_t%d_s%d_e%d" % (instance.id, instance.turn_id, sid, epoch)
+            # for epoch in range(args.n_epochs):
+            qas = []
+            for sid, gold in enumerate(zip(gold_slots, gold_values)):
+                slot, value = gold
+                did = "%s_t%d_s%d" % (instance.id, instance.turn_id, sid)
 
 
-                    qas.append({'id': did,
-                                'is_impossible': False if value in context else True,
-                                'question': slot.replace("-", " "),
-                                'answers': [
-                                    {'text': value, 'answer_start': context.index(value) if value in context else 0}]})
-                    # Negative slot
+                qas.append({'id': did,
+                            'is_impossible': False if value in context else True,
+                            'question': slot.replace("-", " "),
+                            'answers': [
+                                {'text': value, 'answer_start': context.index(value) if value in context else 0}]})
+                # Negative slot
+                neg_slot = np.random.choice(list(ontology.keys()))
+                while slot == neg_slot or neg_slot in gold_slots:
                     neg_slot = np.random.choice(list(ontology.keys()))
-                    while slot == neg_slot or neg_slot in gold_slots:
-                        neg_slot = np.random.choice(list(ontology.keys()))
-                    #
-                    # for neg_slot in ontology.keys():
-                    #     if neg_slot in gold_slots:
-                    #         continue
-                    qas.append({'id': did + "_neg_" + neg_slot,
-                                'is_impossible': True,
-                                'question': neg_slot.replace("-", " "),
-                                'answers': [{'text': "", 'answer_start': -1}]})
+                #
+                # for neg_slot in ontology.keys():
+                #     if neg_slot in gold_slots:
+                #         continue
+                qas.append({'id': did + "_neg_" + neg_slot,
+                            'is_impossible': True,
+                            'question': neg_slot.replace("-", " "),
+                            'answers': [{'text': "", 'answer_start': -1}]})
 
             train_data.append({"context": context, "qas": qas})
             # break
