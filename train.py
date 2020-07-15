@@ -171,6 +171,7 @@ def main(args):
                 teacher = gen_ids
             else:
                 teacher = None
+            # print(op_ids)
 
             # print(input_ids.shap
             domain_scores, state_scores, gen_scores = model(input_ids=input_ids,

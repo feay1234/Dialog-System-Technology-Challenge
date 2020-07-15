@@ -53,6 +53,7 @@ class Encoder(nn.Module):
                 state_positions, attention_mask,
                 op_ids=None, max_update=None):
 
+        # print(op_ids)
         bert_outputs = self.bert(input_ids, token_type_ids, attention_mask)
         sequence_output, pooled_output = bert_outputs[:2]
         state_pos = state_positions[:, :, None].expand(-1, -1, sequence_output.size(-1))

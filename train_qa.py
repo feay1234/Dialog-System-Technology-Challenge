@@ -108,7 +108,7 @@ def main(args):
     dst.model.train_model(train_data, show_running_loss=True)
     print("done")
 
-    eval_res, res_per_domain, pred = dst.evaluate(train_data_raw, ontology, slot_meta, 0)
+    eval_res, res_per_domain, pred = dst.evaluate(test_data_raw, ontology, slot_meta, 0)
     save_result_to_file(args.out_dir + "/" + args.filename + ".res", eval_res, res_per_domain)
     json.dump(pred, open('%s.pred' % (args.out_dir + "/" + args.filename), 'w'))
 
