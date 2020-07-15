@@ -227,7 +227,7 @@ def prepare_dataset(data_path, tokenizer, slot_meta,
             instance.make_instance(tokenizer)
             data.append(instance)
             last_dialog_state = turn_dialog_state
-        if idx == 20:
+        if idx == 1000:
             break
     save_data(data, data_path + ".pk")
     return data
