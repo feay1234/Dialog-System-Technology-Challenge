@@ -16,7 +16,7 @@ class DST_SPAN():
         self.model = QuestionAnsweringModel('bert', 'bert-base-uncased', use_cuda=args.use_cuda,
                                             args={'num_train_epochs': args.n_epochs,'reprocess_input_data': True, 'overwrite_output_dir': True, 'train_batch_size':args.batch_size})
 
-    def generate_train_data(self, train_data_raw, ontology):
+    def generate_train_data(self, train_data_raw, ontology, args):
         train_data = []
         for instance in train_data_raw:
             # context = instance.dialog_history + instance.turn_utter
@@ -29,26 +29,26 @@ class DST_SPAN():
             gold_slots = ["-".join(g.split("-")[:-1]) for g in turn_state]
             gold_values = [g.split("-")[-1] for g in turn_state]
 
-            qas = []
-            # for k in range(10):
-            for sid, gold in enumerate(zip(gold_slots, gold_values)):
-                slot, value = gold
-                did = "%s_t%d_s%d" % (instance.id, instance.turn_id, sid)
+            for epoch in range(args.n_epochs):
+                qas = []
+                for sid, gold in enumerate(zip(gold_slots, gold_values)):
+                    slot, value = gold
+                    did = "%s_t%d_s%d_e%d" % (instance.id, instance.turn_id, sid, epoch)
 
 
-                qas.append({'id': did,
-                            'is_impossible': False if value in context else True,
-                            'question': slot.replace("-", " "),
-                            'answers': [
-                                {'text': value, 'answer_start': context.index(value) if value in context else 0}]})
-                # Negative slot
-                # neg_slot = np.random.choice(list(ontology.keys()))
-                # while slot == neg_slot or neg_slot in gold_slots:
-                #     neg_slot = np.random.choice(list(ontology.keys()))
-                #
-                for neg_slot in ontology.keys():
-                    if neg_slot in gold_slots:
-                        continue
+                    qas.append({'id': did,
+                                'is_impossible': False if value in context else True,
+                                'question': slot.replace("-", " "),
+                                'answers': [
+                                    {'text': value, 'answer_start': context.index(value) if value in context else 0}]})
+                    # Negative slot
+                    neg_slot = np.random.choice(list(ontology.keys()))
+                    while slot == neg_slot or neg_slot in gold_slots:
+                        neg_slot = np.random.choice(list(ontology.keys()))
+                    #
+                    # for neg_slot in ontology.keys():
+                    #     if neg_slot in gold_slots:
+                    #         continue
                     qas.append({'id': did + "_neg_" + neg_slot,
                                 'is_impossible': True,
                                 'question': neg_slot.replace("-", " "),
