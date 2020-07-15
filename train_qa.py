@@ -104,7 +104,7 @@ def main(args):
     # best_epoch = 0
     # for epoch in range(args.n_epochs):
 
-    train_data = dst.generate_train_data(train_data_raw, ontology)
+    train_data = dst.generate_train_data(train_data_raw, ontology, args)
     dst.model.train_model(train_data, show_running_loss=True)
     print("done")
 
