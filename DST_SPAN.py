@@ -20,13 +20,20 @@ class DST_SPAN():
         for instance in train_data_raw:
             # context = instance.dialog_history + instance.turn_utter
             context = instance.turn_utter
-            gold_slots = ["-".join(g.split("-")[:-1]) for g in instance.gold_state]
-            gold_values = [g.split("-")[-1] for g in instance.gold_state]
+
+            prev_state = {key + "-" + instance.gold_p_state[key] for key in instance.gold_p_state}
+            gold_state = set(instance.gold_state)
+            turn_state = gold_state.difference(prev_state)
+
+            gold_slots = ["-".join(g.split("-")[:-1]) for g in turn_state]
+            gold_values = [g.split("-")[-1] for g in turn_state]
 
             qas = []
             for sid, gold in enumerate(zip(gold_slots, gold_values)):
                 slot, value = gold
                 did = "%s_t%d_s%d" % (instance.id, instance.turn_id, sid)
+
+
                 qas.append({'id': did,
                             'is_impossible': False if value in context else True,
                             'question': slot.replace("-", " "),
@@ -41,12 +48,9 @@ class DST_SPAN():
                             'is_impossible': True,
                             'question': neg_slot.replace("-", " "),
                             'answers': [{'text': "", 'answer_start': -1}]})
+
             train_data.append({"context": context, "qas": qas})
         return train_data
-
-
-
-
 
     def evaluate(self, test_data_raw, ontology, slot_meta, epoch):
         op2id = {'update': 0, 'none': 2, 'dontcare': 1}
@@ -63,6 +67,9 @@ class DST_SPAN():
         fp_dic = {k: 0 for k in op2id}
         wall_times = []
         results = {}
+
+        memo_op = {}
+        memo_state = {}
 
         for step in tqdm(range(len(test_data_raw)), desc="Evaluation"):
             instance = test_data_raw[step]
@@ -89,17 +96,37 @@ class DST_SPAN():
             wall_times.append(end - start)
 
             # slot prediction
-            pred_op = ['none' if len(pred['answer']) == 0 else "update" for pred in outputs]
+            # pred_op = ['none' if len(pred['answer']) == 0 else "update" for pred in outputs]
 
             # # value prediction
-            pred_state = set()
+            pred_state = {}
+            pred_op = []
             for pred, slot in zip(outputs, slot_meta):
                 span = pred['answer']
                 if span == "":
                     pred_op.append("none")
                 else:
                     pred_op.append("update")
-                    pred_state.add(slot + "-" + span)
+                    pred_state[slot] = span
+
+            # update current op with previous op
+            if instance.id in memo_op:
+                prev_op = memo_op[instance.id]
+                for _i in range(len(pred_op)):
+                    if pred_op[_i] == 'none' and prev_op[_i] != "none":
+                        pred_op[_i] = prev_op[_i]
+            memo_op[instance.id] = pred_op
+
+            if instance.id in memo_state:
+                prev_state = memo_state[instance.id]
+                for slot in slot_meta:
+                    if slot in prev_state and slot not in pred_state:
+                        pred_state[slot] = prev_state[slot]
+
+            memo_state[instance.id] = pred_state
+            # convert dict to set
+            pred_state = {key + "-" + pred_state[key] for key in pred_state}
+
 
             gold_state = instance.gold_state
 
