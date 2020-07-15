@@ -29,6 +29,7 @@ class DST_SPAN():
             gold_values = [g.split("-")[-1] for g in turn_state]
 
             qas = []
+            # for k in range(10):
             for sid, gold in enumerate(zip(gold_slots, gold_values)):
                 slot, value = gold
                 did = "%s_t%d_s%d" % (instance.id, instance.turn_id, sid)
@@ -50,6 +51,8 @@ class DST_SPAN():
                             'answers': [{'text': "", 'answer_start': -1}]})
 
             train_data.append({"context": context, "qas": qas})
+            # break
+        # print(train_data)
         return train_data
 
     def evaluate(self, test_data_raw, ontology, slot_meta, epoch):

@@ -103,27 +103,30 @@ def main(args):
 
     best_epoch = 0
     for epoch in range(args.n_epochs):
-        batch_loss = []
 
         train_data = dst.generate_train_data(train_data_raw, ontology)
-        dst.model.train_model(train_data, show_running_loss=False)
+        dst.model.train_model(train_data, show_running_loss=True)
+        print("done")
 
+        eval_res, res_per_domain, pred = dst.evaluate(train_data_raw, ontology, slot_meta, best_epoch)
+        save_result_to_file(args.out_dir + "/" + args.filename + ".res", eval_res, res_per_domain)
+        json.dump(pred, open('%s.pred' % (args.out_dir + "/" + args.filename), 'w'))
 
-        if (epoch + 1) % args.eval_epoch == 0:
-
-            eval_res, res_per_domain, pred  = dst.evaluate(dev_data_raw, ontology, slot_meta, epoch+1)
-
-            if eval_res['joint_acc_score'] > best_score['joint_acc_score']:
-                best_score['joint_acc_score'] = eval_res['joint_acc_score']
-                best_epoch = epoch + 1
-
-                eval_res, res_per_domain, pred = dst.evaluate(test_data_raw, ontology, slot_meta, best_epoch)
-                # save to file
-                save_result_to_file(args.out_dir + "/" + args.filename + ".res", eval_res, res_per_domain)
-                json.dump(pred, open('%s.pred' % (args.out_dir + "/" + args.filename), 'w'))
-                print("Best Score : ", best_score['joint_acc_score'])
-
-            print("\n")
+        # if (epoch + 1) % args.eval_epoch == 0:
+        #
+        #     eval_res, res_per_domain, pred  = dst.evaluate(dev_data_raw, ontology, slot_meta, epoch+1)
+        #
+        #     if eval_res['joint_acc_score'] > best_score['joint_acc_score']:
+        #         best_score['joint_acc_score'] = eval_res['joint_acc_score']
+        #         best_epoch = epoch + 1
+        #
+        #         eval_res, res_per_domain, pred = dst.evaluate(test_data_raw, ontology, slot_meta, best_epoch)
+        #         save to file
+                # save_result_to_file(args.out_dir + "/" + args.filename + ".res", eval_res, res_per_domain)
+                # json.dump(pred, open('%s.pred' % (args.out_dir + "/" + args.filename), 'w'))
+                # print("Best Score : ", best_score['joint_acc_score'])
+            #
+            # print("\n")
     #
 
 
@@ -153,7 +156,7 @@ if __name__ == "__main__":
     parser.add_argument("--dec_warmup", default=0.1, type=float)
     parser.add_argument("--enc_lr", default=4e-5, type=float)
     parser.add_argument("--dec_lr", default=1e-4, type=float)
-    parser.add_argument("--n_epochs", default=1, type=int)
+    parser.add_argument("--n_epochs", default=10, type=int)
     parser.add_argument("--eval_epoch", default=1, type=int)
 
     parser.add_argument("--op_code", default="4", type=str)
