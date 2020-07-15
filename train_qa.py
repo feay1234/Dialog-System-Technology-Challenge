@@ -96,7 +96,7 @@ def main(args):
                                         op_code=args.op_code)
     print("# test examples %d" % len(test_data_raw))
 
-    dst = DST_SPAN(args.use_cuda)
+    dst = DST_SPAN(args)
 
     best_score = {'epoch': float("-inf"), 'joint_acc_score': float("-inf"), 'op_acc': float("-inf"),
                   'final_slot_f1': float("-inf")}
@@ -151,7 +151,7 @@ if __name__ == "__main__":
     parser.add_argument("--random_seed", default=42, type=int)
     parser.add_argument("--num_workers", default=4, type=int)
     # parser.add_argument("--batch_size", default=32, type=int)
-    parser.add_argument("--batch_size", default=2, type=int)
+    parser.add_argument("--batch_size", default=32, type=int)
     parser.add_argument("--enc_warmup", default=0.1, type=float)
     parser.add_argument("--dec_warmup", default=0.1, type=float)
     parser.add_argument("--enc_lr", default=4e-5, type=float)
