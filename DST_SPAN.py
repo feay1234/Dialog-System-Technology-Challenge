@@ -73,7 +73,8 @@ class DST_SPAN():
 
         for step in tqdm(range(len(test_data_raw)), desc="Evaluation"):
             instance = test_data_raw[step]
-            context = instance.dialog_history + instance.turn_utter
+            # context = instance.dialog_history + instance.turn_utter
+            context = instance.turn_utter
 
             qas = []
             for idx, slot in enumerate(ontology):
