@@ -108,9 +108,9 @@ def main(args):
         dst.model.train_model(train_data, show_running_loss=True)
         print("done")
 
-        eval_res, res_per_domain, pred = dst.evaluate(train_data_raw, ontology, slot_meta, best_epoch)
-        save_result_to_file(args.out_dir + "/" + args.filename + ".res", eval_res, res_per_domain)
-        json.dump(pred, open('%s.pred' % (args.out_dir + "/" + args.filename), 'w'))
+    eval_res, res_per_domain, pred = dst.evaluate(train_data_raw, ontology, slot_meta, best_epoch)
+    save_result_to_file(args.out_dir + "/" + args.filename + ".res", eval_res, res_per_domain)
+    json.dump(pred, open('%s.pred' % (args.out_dir + "/" + args.filename), 'w'))
 
         # if (epoch + 1) % args.eval_epoch == 0:
         #
