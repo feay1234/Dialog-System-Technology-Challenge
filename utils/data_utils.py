@@ -229,7 +229,7 @@ def prepare_dataset(data_path, tokenizer, slot_meta,
             last_dialog_state = turn_dialog_state
         # if idx == 1:
         #     break
-        break
+        # break
     save_data(data, data_path + ".pk")
     return data
 

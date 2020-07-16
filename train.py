@@ -171,9 +171,7 @@ def main(args):
                 teacher = gen_ids
             else:
                 teacher = None
-            # print(op_ids)
 
-            # print(input_ids.shap
             domain_scores, state_scores, gen_scores = model(input_ids=input_ids,
                                                             token_type_ids=segment_ids,
                                                             state_positions=state_position_ids,
@@ -183,13 +181,12 @@ def main(args):
                                                             max_update=max_update,
                                                             teacher=teacher)
 
-            # state_scores > 5,30,2
-            #
+
             loss_s = loss_fnc(state_scores.view(-1, len(op2id)), op_ids.view(-1))
             loss_g = masked_cross_entropy_for_value(gen_scores.contiguous(),
                                                     gen_ids.contiguous(),
                                                     tokenizer.vocab['[PAD]'])
-            # break
+
             loss = loss_s + loss_g
             if args.exclude_domain is not True:
                 loss_d = loss_fnc(domain_scores.view(-1, len(domain2id)), domain_ids.view(-1))
