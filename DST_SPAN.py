@@ -564,8 +564,7 @@ class QuestionAnsweringModel:
                         self._save_model(args["best_model_dir"], optimizer, scheduler, model=model, results=results)
                         early_stopping_counter = 0
 
-
-            if epoch_number < int(args["num_train_epochs"]) - 1:
+            if epoch_number < int(args["num_train_epochs"]):
                 print("generate new dataset")
 
                 train_data = self.generate_train_data(train_data_raw)
@@ -970,7 +969,7 @@ class DST_SPAN():
     def __init__(self, args, ontology):
 
         self.model = QuestionAnsweringModel('bert', 'bert-base-uncased', ontology, use_cuda=args.use_cuda,
-                                            args={'silent':True, 'num_train_epochs': args.n_epochs,'reprocess_input_data': True, 'overwrite_output_dir': True, 'train_batch_size':args.batch_size})
+                                            args={'silent':False, 'num_train_epochs': args.n_epochs,'reprocess_input_data': True, 'overwrite_output_dir': True, 'train_batch_size':args.batch_size})
 
     def generate_train_data(self, train_data_raw, ontology):
         train_data = []
