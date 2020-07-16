@@ -96,7 +96,7 @@ def main(args):
                                         op_code=args.op_code)
     print("# test examples %d" % len(test_data_raw))
 
-    dst = DST_SPAN(args)
+    dst = DST_SPAN(args, ontology)
 
     best_score = {'epoch': float("-inf"), 'joint_acc_score': float("-inf"), 'op_acc': float("-inf"),
                   'final_slot_f1': float("-inf")}
@@ -104,8 +104,7 @@ def main(args):
     # best_epoch = 0
     # for epoch in range(args.n_epochs):
 
-    train_data = dst.generate_train_data(train_data_raw, ontology, args)
-    dst.model.train_model(train_data, show_running_loss=True)
+    dst.model.train_model(train_data_raw, show_running_loss=True)
     print("done")
 
     eval_res, res_per_domain, pred = dst.evaluate(test_data_raw, ontology, slot_meta, 0)
