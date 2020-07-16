@@ -566,6 +566,7 @@ class QuestionAnsweringModel:
 
 
             if epoch_number < int(args["num_train_epochs"]) - 1:
+                print("generate new dataset")
 
                 train_data = self.generate_train_data(train_data_raw)
                 # print(train_data)
