@@ -1,16 +1,7 @@
 from __future__ import absolute_import, division, print_function
 
-import torch
-# from simpletransformers.question_answering import QuestionAnsweringModel
-from torch import nn
-from torch.nn import CrossEntropyLoss, BCELoss
-from tqdm import tqdm
-from transformers import BertModel, BertPreTrainedModel
-import collections
-import numpy as np
 import time
 
-from DST_Reader import BERT_DST
 from utils.eval_utils import compute_prf, compute_acc, per_domain_join_accuracy
 
 
@@ -40,7 +31,7 @@ from tqdm.auto import trange, tqdm
 from torch.utils.data.distributed import DistributedSampler
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler, TensorDataset
 
-from transformers import AdamW, get_linear_schedule_with_warmup
+from transformers import AdamW, get_linear_schedule_with_warmup, BertPreTrainedModel, BertModel
 from transformers import (
     WEIGHTS_NAME,
     BertConfig,
@@ -60,7 +51,7 @@ from transformers import (
     AlbertTokenizer,
 )
 
-from simpletransformers.question_answering.question_answering_utils import (
+from dst_utils import (
     get_examples,
     convert_examples_to_features,
     RawResult,
@@ -85,9 +76,308 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
-class QuestionAnsweringModel:
-    def __init__(self, model_type, model_name, ontology, args=None, use_cuda=True, cuda_device=-1, **kwargs):
+class DST():
+    def __init__(self, args, ontology, slot_meta):
 
+        self.model = QuestionAnsweringModel('bert', 'bert-base-uncased', ontology, slot_meta, use_cuda=args.use_cuda,
+                                            args={'silent':False, 'num_train_epochs': args.n_epochs,'reprocess_input_data': True, 'overwrite_output_dir': True, 'train_batch_size':args.batch_size})
+
+    def generate_train_data(self, train_data_raw, ontology):
+        train_data = []
+        for instance in train_data_raw:
+            # context = instance.dialog_history + instance.turn_utter
+            context = instance.turn_utter
+
+            prev_state = {key + "-" + instance.gold_p_state[key] for key in instance.gold_p_state}
+            gold_state = set(instance.gold_state)
+            turn_state = gold_state.difference(prev_state)
+
+            gold_slots = ["-".join(g.split("-")[:-1]) for g in turn_state]
+            gold_values = [g.split("-")[-1] for g in turn_state]
+
+            # for epoch in range(args.n_epochs):
+            qas = []
+            for sid, gold in enumerate(zip(gold_slots, gold_values)):
+                slot, value = gold
+                did = "%s_t%d_s%d" % (instance.id, instance.turn_id, sid)
+
+
+                qas.append({'id': did,
+                            'is_impossible': False if value in context else True,
+                            'question': slot.replace("-", " "),
+                            'answers': [
+                                {'text': value, 'answer_start': context.index(value) if value in context else 0}]})
+                # Negative slot
+                neg_slot = np.random.choice(list(ontology.keys()))
+                while slot == neg_slot or neg_slot in gold_slots:
+                    neg_slot = np.random.choice(list(ontology.keys()))
+
+                qas.append({'id': did + "_neg_" + neg_slot,
+                            'is_impossible': True,
+                            'question': neg_slot.replace("-", " "),
+                            'answers': [{'text': "", 'answer_start': -1}]})
+
+            train_data.append({"context": context, "qas": qas})
+            # break
+        # print(train_data)
+        return train_data
+
+    def evaluate(self, test_data_raw, ontology, slot_meta, epoch):
+        op2id = {'delete': 0, 'update': 1, 'dontcare': 2, 'carryover': 3, 'yes': 4, 'no': 5}
+
+        id2op = {v: k for k, v in op2id.items()}
+
+        slot_turn_acc, joint_acc, slot_F1_pred, slot_F1_count = 0, 0, 0, 0
+        final_joint_acc, final_count, final_slot_F1_pred, final_slot_F1_count = 0, 0, 0, 0
+        op_acc, op_F1, op_F1_count = 0, {k: 0 for k in op2id}, {k: 0 for k in op2id}
+        all_op_F1_count = {k: 0 for k in op2id}
+
+        tp_dic = {k: 0 for k in op2id}
+        fn_dic = {k: 0 for k in op2id}
+        fp_dic = {k: 0 for k in op2id}
+        wall_times = []
+        results = {}
+
+        memo_state = {}
+
+        for step in tqdm(range(len(test_data_raw)), desc="Evaluation"):
+            instance = test_data_raw[step]
+            # context = instance.dialog_history + instance.turn_utter
+            context = instance.turn_utter
+
+            qas = []
+            for idx, slot in enumerate(ontology):
+                did = "%s_t%d_s%d" % (instance.id, instance.turn_id, idx)
+                qas.append({'id': did,
+                            'label': 'carryover',
+                            'question': slot.replace("-", " ")})
+
+            test_data = [{"context": context, "qas": qas}]
+
+            gold_slot_value = {'-'.join(ii.split('-')[:-1]): ii.split('-')[-1] for ii in instance.gold_state}
+            gold_op = instance.op_labels
+            # for j, slot in enumerate(slot_meta):
+            #     gold_op.append("carryover" if slot not in gold_slot_value else "update")
+
+
+            start = time.perf_counter()
+            # prediction
+            # test_data = self.model.load_and_cache_examples(test_data)
+            # self.model.predict()
+            # print(test_data)
+            answers, outputs = self.model.predict(test_data)
+
+            pred_op = [id2op[_id] for _id in to_list(torch.argmax(outputs[0], 1))]
+
+            end = time.perf_counter()
+            wall_times.append(end - start)
+
+            # slot prediction
+            # pred_op = ['none' if len(pred['answer']) == 0 else "update" for pred in outputs]
+
+            # # value prediction
+            pred_state = memo_state[instance.id] if instance.id in memo_state else {}
+
+            for op, slot, answer in zip(pred_op, slot_meta, answers):
+                if op == "carryover":
+                    continue
+                elif op == "delete":
+                    # avoid problem
+                    if slot in pred_state:
+                        del pred_state[slot]
+                elif op == "update":
+                    pred_state[slot] = answer['answer']
+                else:
+                    pred_state[slot] = op
+            memo_state[instance.id] = pred_state
+
+            # convert dict to set
+            pred_state = {key + "-" + pred_state[key] for key in pred_state}
+            gold_state = instance.gold_state
+
+            if set(pred_state) == set(gold_state):
+                joint_acc += 1
+            key = str(instance.id) + '_' + str(instance.turn_id)
+
+            results[key] = [list(pred_state), gold_state]
+
+            # Compute prediction slot accuracy
+            temp_acc = compute_acc(set(gold_state), set(pred_state), slot_meta)
+            slot_turn_acc += temp_acc
+
+            # Compute prediction F1 score
+            temp_f1, temp_r, temp_p, count = compute_prf(gold_state, pred_state)
+            slot_F1_pred += temp_f1
+            slot_F1_count += count
+
+            # Compute operation accuracy
+            temp_acc = sum([1 if p == g else 0 for p, g in zip(pred_op, gold_op)]) / len(pred_op)
+            op_acc += temp_acc
+
+            if instance.is_last_turn:
+                final_count += 1
+                if set(pred_state) == set(gold_state):
+                    final_joint_acc += 1
+                final_slot_F1_pred += temp_f1
+                final_slot_F1_count += count
+
+            # Compute operation F1 score
+            for p, g in zip(pred_op, gold_op):
+                all_op_F1_count[g] += 1
+                if p == g:
+                    tp_dic[g] += 1
+                    op_F1_count[g] += 1
+                else:
+                    fn_dic[g] += 1
+                    fp_dic[p] += 1
+    #
+        joint_acc_score = joint_acc / len(test_data_raw)
+        turn_acc_score = slot_turn_acc / len(test_data_raw)
+        slot_F1_score = slot_F1_pred / slot_F1_count
+        op_acc_score = op_acc / len(test_data_raw)
+        final_joint_acc_score = final_joint_acc / final_count
+        final_slot_F1_score = final_slot_F1_pred / final_slot_F1_count
+        latency = np.mean(wall_times) * 1000
+        op_F1_score = {}
+        for k in op2id.keys():
+            tp = tp_dic[k]
+            fn = fn_dic[k]
+            fp = fp_dic[k]
+            precision = tp / (tp + fp) if (tp + fp) != 0 else 0
+            recall = tp / (tp + fn) if (tp + fn) != 0 else 0
+            F1 = 2 * precision * recall / float(precision + recall) if (precision + recall) != 0 else 0
+            op_F1_score[k] = F1
+
+        # print("------------------------------")
+        print("Epoch %d joint accuracy : " % epoch, joint_acc_score)
+        print("Epoch %d slot turn accuracy : " % epoch, turn_acc_score)
+        print("Epoch %d slot turn F1: " % epoch, slot_F1_score)
+        print("Epoch %d op accuracy : " % epoch, op_acc_score)
+        print("Epoch %d op F1 : " % epoch, op_F1_score)
+        print("Epoch %d op hit count : " % epoch, op_F1_count)
+        print("Epoch %d op all count : " % epoch, all_op_F1_count)
+        print("Final Joint Accuracy : ", final_joint_acc_score)
+        print("Final slot turn F1 : ", final_slot_F1_score)
+        print("Latency Per Prediction : %f ms" % latency)
+        print("-----------------------------\n")
+        res_per_domain = per_domain_join_accuracy(results, slot_meta)
+        #
+        scores = {'epoch': epoch, 'joint_acc_score': joint_acc_score,
+                  'turn_acc_score': turn_acc_score, 'slot_F1_score': slot_F1_score,
+                  'op_acc_score': op_acc_score, 'op_F1_score': op_F1_score, 'op_F1_count': op_F1_count,
+                  'all_op_F1_count': all_op_F1_count,
+                  'final_joint_acc_score': final_joint_acc_score, 'final_slot_F1_score': final_slot_F1_score,
+                  'latency': latency}
+
+        return scores, res_per_domain, results
+
+from torch import nn
+from torch.nn import CrossEntropyLoss
+class BertForDST(BertPreTrainedModel):
+    def __init__(self, config):
+        super().__init__(config)
+        self.num_labels = config.num_labels
+
+        self.bert = BertModel(config)
+        self.qa_outputs = nn.Linear(config.hidden_size, config.num_labels)
+
+        self.dropout = nn.Dropout(0.1)
+        self.classifier = nn.Linear(config.hidden_size, 6)
+
+        self.init_weights()
+
+    def forward(
+        self,
+        input_ids=None,
+        attention_mask=None,
+        token_type_ids=None,
+        position_ids=None,
+        head_mask=None,
+        inputs_embeds=None,
+        start_positions=None,
+        end_positions=None,
+        output_attentions=None,
+        output_hidden_states=None,
+        labels=None,
+    ):
+        r"""
+        start_positions (:obj:`torch.LongTensor` of shape :obj:`(batch_size,)`, `optional`, defaults to :obj:`None`):
+            Labels for position (index) of the start of the labelled span for computing the token classification loss.
+            Positions are clamped to the length of the sequence (`sequence_length`).
+            Position outside of the sequence are not taken into account for computing the loss.
+        end_positions (:obj:`torch.LongTensor` of shape :obj:`(batch_size,)`, `optional`, defaults to :obj:`None`):
+            Labels for position (index) of the end of the labelled span for computing the token classification loss.
+            Positions are clamped to the length of the sequence (`sequence_length`).
+            Position outside of the sequence are not taken into account for computing the loss.
+
+    Returns:
+        :obj:`tuple(torch.FloatTensor)` comprising various elements depending on the configuration (:class:`~transformers.BertConfig`) and inputs:
+        loss (:obj:`torch.FloatTensor` of shape :obj:`(1,)`, `optional`, returned when :obj:`labels` is provided):
+            Total span extraction loss is the sum of a Cross-Entropy for the start and end positions.
+        start_scores (:obj:`torch.FloatTensor` of shape :obj:`(batch_size, sequence_length,)`):
+            Span-start scores (before SoftMax).
+        end_scores (:obj:`torch.FloatTensor` of shape :obj:`(batch_size, sequence_length,)`):
+            Span-end scores (before SoftMax).
+        hidden_states (:obj:`tuple(torch.FloatTensor)`, `optional`, returned when ``output_hidden_states=True`` is passed or when ``config.output_hidden_states=True``):
+            Tuple of :obj:`torch.FloatTensor` (one for the output of the embeddings + one for the output of each layer)
+            of shape :obj:`(batch_size, sequence_length, hidden_size)`.
+
+            Hidden-states of the model at the output of each layer plus the initial embedding outputs.
+        attentions (:obj:`tuple(torch.FloatTensor)`, `optional`, returned when ``output_attentions=True`` is passed or when ``config.output_attentions=True``):
+            Tuple of :obj:`torch.FloatTensor` (one for each layer) of shape
+            :obj:`(batch_size, num_heads, sequence_length, sequence_length)`.
+
+            Attentions weights after the attention softmax, used to compute the weighted average in the self-attention
+            heads.
+        """
+
+        outputs = self.bert(
+            input_ids,
+            attention_mask=attention_mask,
+            token_type_ids=token_type_ids,
+            position_ids=position_ids,
+            head_mask=head_mask,
+            inputs_embeds=inputs_embeds,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
+        )
+
+        sequence_output, pooled_output = outputs[:2]
+
+        logits = self.qa_outputs(sequence_output)
+        start_logits, end_logits = logits.split(1, dim=-1)
+        start_logits = start_logits.squeeze(-1)
+        end_logits = end_logits.squeeze(-1)
+
+        pooled_output = self.dropout(pooled_output)
+        logits = self.classifier(pooled_output)
+
+        outputs = (logits, start_logits, end_logits,) + outputs[2:]
+        if start_positions is not None and end_positions is not None:
+            # If we are on multi-GPU, split add a dimension
+            if len(start_positions.size()) > 1:
+                start_positions = start_positions.squeeze(-1)
+            if len(end_positions.size()) > 1:
+                end_positions = end_positions.squeeze(-1)
+            # sometimes the start/end positions are outside our model inputs, we ignore these terms
+            ignored_index = start_logits.size(1)
+            start_positions.clamp_(0, ignored_index)
+            end_positions.clamp_(0, ignored_index)
+
+            loss_fct = CrossEntropyLoss(ignore_index=ignored_index)
+            start_loss = loss_fct(start_logits, start_positions)
+            end_loss = loss_fct(end_logits, end_positions)
+
+            loss_fct = CrossEntropyLoss()
+            loss = loss_fct(logits.view(-1, 6), labels.view(-1))
+
+            total_loss = (loss + start_loss + end_loss) / 3
+            outputs = (total_loss,) + outputs
+
+        return outputs  # (loss), start_logits, end_logits, (hidden_states), (attentions)
+
+class QuestionAnsweringModel:
+    def __init__(self, model_type, model_name, ontology, slot_meta, args=None, use_cuda=True, cuda_device=-1, **kwargs):
 
         """
         Initializes a QuestionAnsweringModel model.
@@ -102,7 +392,7 @@ class QuestionAnsweringModel:
         """  # noqa: ignore flake8"
 
         MODEL_CLASSES = {
-            "bert": (BertConfig, BertForQuestionAnswering, BertTokenizer),
+            "bert": (BertConfig, BertForDST, BertTokenizer),
             "xlnet": (XLNetConfig, XLNetForQuestionAnswering, XLNetTokenizer),
             "xlm": (XLMConfig, XLMForQuestionAnswering, XLMTokenizer),
             "distilbert": (DistilBertConfig, DistilBertForQuestionAnswering, DistilBertTokenizer,),
@@ -120,6 +410,7 @@ class QuestionAnsweringModel:
         self.model = model_class.from_pretrained(model_name, **kwargs)
 
         self.ontology = ontology
+        self.slot_meta = slot_meta
 
         if use_cuda:
             if torch.cuda.is_available():
@@ -206,7 +497,8 @@ class QuestionAnsweringModel:
                 pad_token_segment_id=3 if args["model_type"] in ["xlnet"] else 0,
                 cls_token_at_end=True if args["model_type"] in ["xlnet"] else False,
                 sequence_a_is_doc=True if args["model_type"] in ["xlnet"] else False,
-                silent=args["silent"],
+                # be silent at test time.
+                silent=evaluate,
             )
 
             if not no_cache:
@@ -218,6 +510,8 @@ class QuestionAnsweringModel:
         all_cls_index = torch.tensor([f.cls_index for f in features], dtype=torch.long)
         all_p_mask = torch.tensor([f.p_mask for f in features], dtype=torch.float)
         all_example_index = torch.arange(all_input_ids.size(0), dtype=torch.long)
+        all_labels = torch.tensor([f.label for f in features], dtype=torch.long)
+
         if evaluate:
             dataset = TensorDataset(
                 all_input_ids, all_input_mask, all_segment_ids, all_example_index, all_cls_index, all_p_mask,
@@ -233,6 +527,7 @@ class QuestionAnsweringModel:
                 all_end_positions,
                 all_cls_index,
                 all_p_mask,
+                all_labels,
             )
 
         if output_examples:
@@ -568,17 +863,6 @@ class QuestionAnsweringModel:
                         self._save_model(args["best_model_dir"], optimizer, scheduler, model=model, results=results)
                         early_stopping_counter = 0
 
-            if epoch_number < int(args["num_train_epochs"]):
-                print("generate new dataset")
-
-                train_data = self.generate_train_data(train_data_raw)
-                # print(train_data)
-                train_dataset = self.load_and_cache_examples(train_data)
-
-                tb_writer = SummaryWriter(logdir=args["tensorboard_dir"])
-                train_sampler = RandomSampler(train_dataset)
-                train_dataloader = DataLoader(train_dataset, sampler=train_sampler, batch_size=args["train_batch_size"])
-
         return global_step, tr_loss / global_step
 
     def generate_train_data(self, train_data_raw):
@@ -591,38 +875,33 @@ class QuestionAnsweringModel:
             gold_state = set(instance.gold_state)
             turn_state = gold_state.difference(prev_state)
 
-            gold_slots = ["-".join(g.split("-")[:-1]) for g in turn_state]
-            gold_values = [g.split("-")[-1] for g in turn_state]
-
-            # for epoch in range(args.n_epochs):
+            slot_value = {"-".join(g.split("-")[:-1]): g.split("-")[-1] for g in turn_state}
+            gold_ops = instance.op_labels
             qas = []
-            for sid, gold in enumerate(zip(gold_slots, gold_values)):
-                slot, value = gold
-                did = "%s_t%d_s%d" % (instance.id, instance.turn_id, sid)
+            for idx, slot in enumerate(self.slot_meta):
+                did = "%s_t%d_s%d" % (instance.id, instance.turn_id, idx)
+                if slot in slot_value:
+                    value = slot_value[slot]
+                    qas.append({'id': did,
+                                'is_impossible': False if value in context else True,
+                                'label': gold_ops[idx],
+                                'question': slot.replace("-", " "),
+                                'answers': [
+                                    {'text': value, 'answer_start': context.index(value) if value in context else -1}]})
+                else:
+                    qas.append({'id': did,
+                                'is_impossible': True,
+                                'label': gold_ops[idx],
+                                'question': slot.replace("-", " "),
+                                'answers': [
+                                    {'text': "", 'answer_start': -1}]})
 
+            train_data.append({"context": context,
+                               "qas": qas})
+            break
 
-                qas.append({'id': did,
-                            'is_impossible': False if value in context else True,
-                            'question': slot.replace("-", " "),
-                            'answers': [
-                                {'text': value, 'answer_start': context.index(value) if value in context else 0}]})
-                # Negative slot
-                neg_slot = np.random.choice(list(self.ontology.keys()))
-                while slot == neg_slot or neg_slot in gold_slots:
-                    neg_slot = np.random.choice(list(self.ontology.keys()))
-
-            # for neg_slot in ontology.keys():
-            #     if neg_slot in gold_slots:
-            #         continue
-                qas.append({'id': did + "_neg_" + neg_slot,
-                            'is_impossible': True,
-                            'question': neg_slot.replace("-", " "),
-                            'answers': [{'text': "", 'answer_start': -1}]})
-
-            train_data.append({"context": context, "qas": qas})
-            # break
-        # print(train_data)
         return train_data
+
     def eval_model(self, eval_data, output_dir=None, verbose=False):
         """
         Evaluates the model on eval_data. Saves results to output_dir.
@@ -803,12 +1082,13 @@ class QuestionAnsweringModel:
         )
 
         eval_sampler = SequentialSampler(eval_dataset)
-        eval_dataloader = DataLoader(eval_dataset, sampler=eval_sampler, batch_size=args["eval_batch_size"])
+        # number of slots
+        eval_dataloader = DataLoader(eval_dataset, sampler=eval_sampler, batch_size=30)
 
         model.eval()
 
         all_results = []
-        for batch in tqdm(eval_dataloader, disable=args["silent"]):
+        for batch in tqdm(eval_dataloader, disable=True):
             batch = tuple(t.to(device) for t in batch)
 
             with torch.no_grad():
@@ -842,7 +1122,7 @@ class QuestionAnsweringModel:
                         )
                     else:
                         result = RawResult(
-                            unique_id=unique_id, start_logits=to_list(outputs[0][i]), end_logits=to_list(outputs[1][i]),
+                            unique_id=unique_id, start_logits=to_list(outputs[1][i]), end_logits=to_list(outputs[2][i]),
                         )
                     all_results.append(result)
 
@@ -864,7 +1144,7 @@ class QuestionAnsweringModel:
                 examples, features, all_results, n_best_size, args["max_answer_length"], False, False, True, False,
             )
 
-        return answers
+        return answers, outputs
 
     def calculate_results(self, truth, predictions):
         truth_dict = {}
@@ -930,6 +1210,7 @@ class QuestionAnsweringModel:
             "attention_mask": batch[1],
             "start_positions": batch[3],
             "end_positions": batch[4],
+            "labels": batch[7],
         }
 
         if self.args["model_type"] != "distilbert":
@@ -969,206 +1250,3 @@ class QuestionAnsweringModel:
                     writer.write("{} = {}\n".format(key, str(results[key])))
 
 
-class DST_SPAN():
-    def __init__(self, args, ontology):
-
-        self.model = QuestionAnsweringModel('bert', 'bert-base-uncased', ontology, use_cuda=args.use_cuda,
-                                            args={'silent':False, 'num_train_epochs': args.n_epochs,'reprocess_input_data': True, 'overwrite_output_dir': True, 'train_batch_size':args.batch_size})
-
-    def generate_train_data(self, train_data_raw, ontology):
-        train_data = []
-        for instance in train_data_raw:
-            # context = instance.dialog_history + instance.turn_utter
-            context = instance.turn_utter
-
-            prev_state = {key + "-" + instance.gold_p_state[key] for key in instance.gold_p_state}
-            gold_state = set(instance.gold_state)
-            turn_state = gold_state.difference(prev_state)
-
-            gold_slots = ["-".join(g.split("-")[:-1]) for g in turn_state]
-            gold_values = [g.split("-")[-1] for g in turn_state]
-
-            # for epoch in range(args.n_epochs):
-            qas = []
-            for sid, gold in enumerate(zip(gold_slots, gold_values)):
-                slot, value = gold
-                did = "%s_t%d_s%d" % (instance.id, instance.turn_id, sid)
-
-
-                qas.append({'id': did,
-                            'is_impossible': False if value in context else True,
-                            'question': slot.replace("-", " "),
-                            'answers': [
-                                {'text': value, 'answer_start': context.index(value) if value in context else 0}]})
-                # Negative slot
-                neg_slot = np.random.choice(list(ontology.keys()))
-                while slot == neg_slot or neg_slot in gold_slots:
-                    neg_slot = np.random.choice(list(ontology.keys()))
-
-            # for neg_slot in ontology.keys():
-            #     if neg_slot in gold_slots:
-            #         continue
-                qas.append({'id': did + "_neg_" + neg_slot,
-                            'is_impossible': True,
-                            'question': neg_slot.replace("-", " "),
-                            'answers': [{'text': "", 'answer_start': -1}]})
-
-            train_data.append({"context": context, "qas": qas})
-            # break
-        # print(train_data)
-        return train_data
-
-    def evaluate(self, test_data_raw, ontology, slot_meta, epoch):
-        op2id = {'update': 0, 'none': 2, 'dontcare': 1}
-
-        id2op = {v: k for k, v in op2id.items()}
-
-        slot_turn_acc, joint_acc, slot_F1_pred, slot_F1_count = 0, 0, 0, 0
-        final_joint_acc, final_count, final_slot_F1_pred, final_slot_F1_count = 0, 0, 0, 0
-        op_acc, op_F1, op_F1_count = 0, {k: 0 for k in op2id}, {k: 0 for k in op2id}
-        all_op_F1_count = {k: 0 for k in op2id}
-
-        tp_dic = {k: 0 for k in op2id}
-        fn_dic = {k: 0 for k in op2id}
-        fp_dic = {k: 0 for k in op2id}
-        wall_times = []
-        results = {}
-
-        memo_op = {}
-        memo_state = {}
-
-        for step in tqdm(range(len(test_data_raw)), desc="Evaluation"):
-            instance = test_data_raw[step]
-            # context = instance.dialog_history + instance.turn_utter
-            context = instance.turn_utter
-
-            qas = []
-            for idx, slot in enumerate(ontology):
-                did = "%s_t%d_s%d" % (instance.id, instance.turn_id, idx)
-                qas.append({'id': did,
-                            'question': slot.replace("-", " ")})
-
-            test_data = [{"context": context, "qas": qas}]
-
-            gold_slot_value = {'-'.join(ii.split('-')[:-1]): ii.split('-')[-1] for ii in instance.gold_state}
-            gold_op = []
-            for j, slot in enumerate(slot_meta):
-                gold_op.append("none" if slot not in gold_slot_value else "update")
-
-
-            start = time.perf_counter()
-            # prediction
-            outputs = self.model.predict(test_data)
-            end = time.perf_counter()
-            wall_times.append(end - start)
-
-            # slot prediction
-            # pred_op = ['none' if len(pred['answer']) == 0 else "update" for pred in outputs]
-
-            # # value prediction
-            pred_state = {}
-            pred_op = []
-            for pred, slot in zip(outputs, slot_meta):
-                span = pred['answer']
-                if span == "":
-                    pred_op.append("none")
-                else:
-                    pred_op.append("update")
-                    pred_state[slot] = span
-
-            # update current op with previous op
-            if instance.id in memo_op:
-                prev_op = memo_op[instance.id]
-                for _i in range(len(pred_op)):
-                    if pred_op[_i] == 'none' and prev_op[_i] != "none":
-                        pred_op[_i] = prev_op[_i]
-            memo_op[instance.id] = pred_op
-
-            if instance.id in memo_state:
-                prev_state = memo_state[instance.id]
-                for slot in slot_meta:
-                    if slot in prev_state and slot not in pred_state:
-                        pred_state[slot] = prev_state[slot]
-
-            memo_state[instance.id] = pred_state
-            # convert dict to set
-            pred_state = {key + "-" + pred_state[key] for key in pred_state}
-
-
-            gold_state = instance.gold_state
-
-            if set(pred_state) == set(gold_state):
-                joint_acc += 1
-            key = str(instance.id) + '_' + str(instance.turn_id)
-
-            results[key] = [list(pred_state), gold_state]
-
-            # Compute prediction slot accuracy
-            temp_acc = compute_acc(set(gold_state), set(pred_state), slot_meta)
-            slot_turn_acc += temp_acc
-
-            # Compute prediction F1 score
-            temp_f1, temp_r, temp_p, count = compute_prf(gold_state, pred_state)
-            slot_F1_pred += temp_f1
-            slot_F1_count += count
-
-            # Compute operation accuracy
-            temp_acc = sum([1 if p == g else 0 for p, g in zip(pred_op, gold_op)]) / len(pred_op)
-            op_acc += temp_acc
-
-            if instance.is_last_turn:
-                final_count += 1
-                if set(pred_state) == set(gold_state):
-                    final_joint_acc += 1
-                final_slot_F1_pred += temp_f1
-                final_slot_F1_count += count
-
-            # Compute operation F1 score
-            for p, g in zip(pred_op, gold_op):
-                all_op_F1_count[g] += 1
-                if p == g:
-                    tp_dic[g] += 1
-                    op_F1_count[g] += 1
-                else:
-                    fn_dic[g] += 1
-                    fp_dic[p] += 1
-    #
-        joint_acc_score = joint_acc / len(test_data_raw)
-        turn_acc_score = slot_turn_acc / len(test_data_raw)
-        slot_F1_score = slot_F1_pred / slot_F1_count
-        op_acc_score = op_acc / len(test_data_raw)
-        final_joint_acc_score = final_joint_acc / final_count
-        final_slot_F1_score = final_slot_F1_pred / final_slot_F1_count
-        latency = np.mean(wall_times) * 1000
-        op_F1_score = {}
-        for k in op2id.keys():
-            tp = tp_dic[k]
-            fn = fn_dic[k]
-            fp = fp_dic[k]
-            precision = tp / (tp + fp) if (tp + fp) != 0 else 0
-            recall = tp / (tp + fn) if (tp + fn) != 0 else 0
-            F1 = 2 * precision * recall / float(precision + recall) if (precision + recall) != 0 else 0
-            op_F1_score[k] = F1
-
-        # print("------------------------------")
-        print("Epoch %d joint accuracy : " % epoch, joint_acc_score)
-        print("Epoch %d slot turn accuracy : " % epoch, turn_acc_score)
-        print("Epoch %d slot turn F1: " % epoch, slot_F1_score)
-        print("Epoch %d op accuracy : " % epoch, op_acc_score)
-        print("Epoch %d op F1 : " % epoch, op_F1_score)
-        print("Epoch %d op hit count : " % epoch, op_F1_count)
-        print("Epoch %d op all count : " % epoch, all_op_F1_count)
-        print("Final Joint Accuracy : ", final_joint_acc_score)
-        print("Final slot turn F1 : ", final_slot_F1_score)
-        print("Latency Per Prediction : %f ms" % latency)
-        print("-----------------------------\n")
-        res_per_domain = per_domain_join_accuracy(results, slot_meta)
-        #
-        scores = {'epoch': epoch, 'joint_acc_score': joint_acc_score,
-                  'turn_acc_score': turn_acc_score, 'slot_F1_score': slot_F1_score,
-                  'op_acc_score': op_acc_score, 'op_F1_score': op_F1_score, 'op_F1_count': op_F1_count,
-                  'all_op_F1_count': all_op_F1_count,
-                  'final_joint_acc_score': final_joint_acc_score, 'final_slot_F1_score': final_slot_F1_score,
-                  'latency': latency}
-
-        return scores, res_per_domain, results

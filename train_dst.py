@@ -1,10 +1,9 @@
 from tqdm import tqdm
 from time import strftime, localtime
 
-from DST_SPAN import DST_SPAN
-from model import SomDST
 from transformers import BertTokenizer, BertModel, AdamW
 
+from DST import DST
 from utils.ckpt_utils import download_ckpt
 from utils.data_utils import prepare_dataset, load_data, save_result_to_file
 from utils.data_utils import make_slot_meta, domain2id, OP_SET, make_turn_label, postprocessing
@@ -96,7 +95,7 @@ def main(args):
                                         op_code=args.op_code)
     print("# test examples %d" % len(test_data_raw))
 
-    dst = DST_SPAN(args, ontology)
+    dst = DST(args, ontology, slot_meta)
 
     best_score = {'epoch': float("-inf"), 'joint_acc_score': float("-inf"), 'op_acc': float("-inf"),
                   'final_slot_f1': float("-inf")}
@@ -105,9 +104,8 @@ def main(args):
     # for epoch in range(args.n_epochs):
 
     dst.model.train_model(train_data_raw, show_running_loss=True)
-    print("done")
 
-    eval_res, res_per_domain, pred = dst.evaluate(test_data_raw, ontology, slot_meta, 0)
+    eval_res, res_per_domain, pred = dst.evaluate(train_data_raw, ontology, slot_meta, 0)
     save_result_to_file(args.out_dir + "/" + args.filename + ".res", eval_res, res_per_domain)
     json.dump(pred, open('%s.pred' % (args.out_dir + "/" + args.filename), 'w'))
 
@@ -154,10 +152,10 @@ if __name__ == "__main__":
     parser.add_argument("--dec_warmup", default=0.1, type=float)
     parser.add_argument("--enc_lr", default=4e-5, type=float)
     parser.add_argument("--dec_lr", default=1e-4, type=float)
-    parser.add_argument("--n_epochs", default=10, type=int)
+    parser.add_argument("--n_epochs", default=20, type=int)
     parser.add_argument("--eval_epoch", default=1, type=int)
 
-    parser.add_argument("--op_code", default="4", type=str)
+    parser.add_argument("--op_code", default="6", type=str)
     parser.add_argument("--slot_token", default="[SLOT]", type=str)
     parser.add_argument("--dropout", default=0.1, type=float)
     parser.add_argument("--hidden_dropout_prob", default=0.1, type=float)
