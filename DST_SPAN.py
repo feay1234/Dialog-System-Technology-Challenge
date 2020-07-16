@@ -970,7 +970,7 @@ class DST_SPAN():
     def __init__(self, args, ontology):
 
         self.model = QuestionAnsweringModel('bert', 'bert-base-uncased', ontology, use_cuda=args.use_cuda,
-                                            args={'num_train_epochs': args.n_epochs,'reprocess_input_data': True, 'overwrite_output_dir': True, 'train_batch_size':args.batch_size})
+                                            args={'silent':True, 'num_train_epochs': args.n_epochs,'reprocess_input_data': True, 'overwrite_output_dir': True, 'train_batch_size':args.batch_size})
 
     def generate_train_data(self, train_data_raw, ontology):
         train_data = []
