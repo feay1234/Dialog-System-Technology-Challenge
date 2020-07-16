@@ -898,7 +898,7 @@ class QuestionAnsweringModel:
 
             train_data.append({"context": context,
                                "qas": qas})
-            break
+            # break
 
         return train_data
 
