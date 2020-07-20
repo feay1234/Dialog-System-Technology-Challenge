@@ -470,8 +470,8 @@ class QuestionAnsweringModel:
         # train_dataloader = DataLoader(train_dataset, sampler=train_sampler, batch_size=args["train_batch_size"])
 
         # t_total = len(train_data_raw) // args["gradient_accumulation_steps"] * args["num_train_epochs"]
-        # t_total = len(train_data_raw) // args["train_batch_size"] * args["num_train_epochs"]
-        t_total = len(train_data_raw) * args["num_train_epochs"]
+        t_total = len(train_data_raw) // args["train_batch_size"] * args["num_train_epochs"]
+        # t_total = len(train_data_raw) * args["num_train_epochs"]
 
         no_decay = ["bias", "LayerNorm.weight"]
         optimizer_grouped_parameters = [
@@ -549,8 +549,8 @@ class QuestionAnsweringModel:
                 epochs_trained -= 1
                 continue
             # epoch_iterator = tqdm(train_dataloader, desc="Iteration")
-            for step in trange(len(train_data_raw), desc="Current iteration", disable=args["silent"]):
-            # for step, idx in enumerate(trange(len(train_data_raw) // args["train_batch_size"], desc="Current iteration", disable=args["silent"])):
+            # for step in trange(len(train_data_raw), desc="Current iteration", disable=args["silent"]):
+            for step, idx in enumerate(trange(len(train_data_raw) // args["train_batch_size"], desc="Current iteration", disable=args["silent"])):
             #     if step == 1:
             #         break
 
@@ -558,7 +558,8 @@ class QuestionAnsweringModel:
                     steps_trained_in_current_epoch -= 1
                     continue
 
-                train_batch = [train_data_raw[step]]
+                # train_batch = [train_data_raw[step]]
+                train_batch = train_data_raw[idx:idx+args["train_batch_size"]]
                 train_data = self.generate_train_data(train_batch)
                 train_dataset = self.load_and_cache_examples(train_data)
 
