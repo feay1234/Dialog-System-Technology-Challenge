@@ -2,6 +2,7 @@ from __future__ import absolute_import, division, print_function
 
 import time
 
+from utils.data_utils import save_result_to_file
 from utils.eval_utils import compute_prf, compute_acc, per_domain_join_accuracy
 
 
@@ -122,154 +123,7 @@ class DST():
         # print(train_data)
         return train_data
 
-    def evaluate(self, test_data_raw, ontology, slot_meta, epoch):
-        op2id = {'delete': 0, 'update': 1, 'dontcare': 2, 'carryover': 3, 'yes': 4, 'no': 5}
 
-        id2op = {v: k for k, v in op2id.items()}
-
-        slot_turn_acc, joint_acc, slot_F1_pred, slot_F1_count = 0, 0, 0, 0
-        final_joint_acc, final_count, final_slot_F1_pred, final_slot_F1_count = 0, 0, 0, 0
-        op_acc, op_F1, op_F1_count = 0, {k: 0 for k in op2id}, {k: 0 for k in op2id}
-        all_op_F1_count = {k: 0 for k in op2id}
-
-        tp_dic = {k: 0 for k in op2id}
-        fn_dic = {k: 0 for k in op2id}
-        fp_dic = {k: 0 for k in op2id}
-        wall_times = []
-        results = {}
-
-        memo_state = {}
-
-        for step in tqdm(range(len(test_data_raw)), desc="Evaluation"):
-            instance = test_data_raw[step]
-            # context = instance.dialog_history + instance.turn_utter
-            context = instance.turn_utter
-
-            qas = []
-            for idx, slot in enumerate(ontology):
-                did = "%s_t%d_s%d" % (instance.id, instance.turn_id, idx)
-                qas.append({'id': did,
-                            'label': 'carryover',
-                            'question': slot.replace("-", " ")})
-
-            test_data = [{"context": context, "qas": qas}]
-
-            gold_slot_value = {'-'.join(ii.split('-')[:-1]): ii.split('-')[-1] for ii in instance.gold_state}
-            gold_op = instance.op_labels
-            # for j, slot in enumerate(slot_meta):
-            #     gold_op.append("carryover" if slot not in gold_slot_value else "update")
-
-
-            start = time.perf_counter()
-            # prediction
-            # test_data = self.model.load_and_cache_examples(test_data)
-            # self.model.predict()
-            # print(test_data)
-            answers, outputs = self.model.predict(test_data)
-
-            pred_op = [id2op[_id] for _id in to_list(torch.argmax(outputs[0], 1))]
-
-            end = time.perf_counter()
-            wall_times.append(end - start)
-
-            # slot prediction
-            # pred_op = ['none' if len(pred['answer']) == 0 else "update" for pred in outputs]
-
-            # # value prediction
-            pred_state = memo_state[instance.id] if instance.id in memo_state else {}
-
-            for op, slot, answer in zip(pred_op, slot_meta, answers):
-                if op == "carryover":
-                    continue
-                elif op == "delete":
-                    # avoid problem
-                    if slot in pred_state:
-                        del pred_state[slot]
-                elif op == "update":
-                    pred_state[slot] = answer['answer']
-                else:
-                    pred_state[slot] = op
-            memo_state[instance.id] = pred_state
-
-            # convert dict to set
-            pred_state = {key + "-" + pred_state[key] for key in pred_state}
-            gold_state = instance.gold_state
-
-            if set(pred_state) == set(gold_state):
-                joint_acc += 1
-            key = str(instance.id) + '_' + str(instance.turn_id)
-
-            results[key] = [list(pred_state), gold_state]
-
-            # Compute prediction slot accuracy
-            temp_acc = compute_acc(set(gold_state), set(pred_state), slot_meta)
-            slot_turn_acc += temp_acc
-
-            # Compute prediction F1 score
-            temp_f1, temp_r, temp_p, count = compute_prf(gold_state, pred_state)
-            slot_F1_pred += temp_f1
-            slot_F1_count += count
-
-            # Compute operation accuracy
-            temp_acc = sum([1 if p == g else 0 for p, g in zip(pred_op, gold_op)]) / len(pred_op)
-            op_acc += temp_acc
-
-            if instance.is_last_turn:
-                final_count += 1
-                if set(pred_state) == set(gold_state):
-                    final_joint_acc += 1
-                final_slot_F1_pred += temp_f1
-                final_slot_F1_count += count
-
-            # Compute operation F1 score
-            for p, g in zip(pred_op, gold_op):
-                all_op_F1_count[g] += 1
-                if p == g:
-                    tp_dic[g] += 1
-                    op_F1_count[g] += 1
-                else:
-                    fn_dic[g] += 1
-                    fp_dic[p] += 1
-    #
-        joint_acc_score = joint_acc / len(test_data_raw)
-        turn_acc_score = slot_turn_acc / len(test_data_raw)
-        slot_F1_score = slot_F1_pred / slot_F1_count
-        op_acc_score = op_acc / len(test_data_raw)
-        final_joint_acc_score = final_joint_acc / final_count
-        final_slot_F1_score = final_slot_F1_pred / final_slot_F1_count
-        latency = np.mean(wall_times) * 1000
-        op_F1_score = {}
-        for k in op2id.keys():
-            tp = tp_dic[k]
-            fn = fn_dic[k]
-            fp = fp_dic[k]
-            precision = tp / (tp + fp) if (tp + fp) != 0 else 0
-            recall = tp / (tp + fn) if (tp + fn) != 0 else 0
-            F1 = 2 * precision * recall / float(precision + recall) if (precision + recall) != 0 else 0
-            op_F1_score[k] = F1
-
-        # print("------------------------------")
-        print("Epoch %d joint accuracy : " % epoch, joint_acc_score)
-        print("Epoch %d slot turn accuracy : " % epoch, turn_acc_score)
-        print("Epoch %d slot turn F1: " % epoch, slot_F1_score)
-        print("Epoch %d op accuracy : " % epoch, op_acc_score)
-        print("Epoch %d op F1 : " % epoch, op_F1_score)
-        print("Epoch %d op hit count : " % epoch, op_F1_count)
-        print("Epoch %d op all count : " % epoch, all_op_F1_count)
-        print("Final Joint Accuracy : ", final_joint_acc_score)
-        print("Final slot turn F1 : ", final_slot_F1_score)
-        print("Latency Per Prediction : %f ms" % latency)
-        print("-----------------------------\n")
-        res_per_domain = per_domain_join_accuracy(results, slot_meta)
-        #
-        scores = {'epoch': epoch, 'joint_acc_score': joint_acc_score,
-                  'turn_acc_score': turn_acc_score, 'slot_F1_score': slot_F1_score,
-                  'op_acc_score': op_acc_score, 'op_F1_score': op_F1_score, 'op_F1_count': op_F1_count,
-                  'all_op_F1_count': all_op_F1_count,
-                  'final_joint_acc_score': final_joint_acc_score, 'final_slot_F1_score': final_slot_F1_score,
-                  'latency': latency}
-
-        return scores, res_per_domain, results
 
 from torch import nn
 from torch.nn import CrossEntropyLoss
@@ -498,7 +352,7 @@ class QuestionAnsweringModel:
                 cls_token_at_end=True if args["model_type"] in ["xlnet"] else False,
                 sequence_a_is_doc=True if args["model_type"] in ["xlnet"] else False,
                 # be silent at test time.
-                silent=evaluate,
+                silent=True,
             )
 
             if not no_cache:
@@ -519,23 +373,32 @@ class QuestionAnsweringModel:
         else:
             all_start_positions = torch.tensor([f.start_position for f in features], dtype=torch.long)
             all_end_positions = torch.tensor([f.end_position for f in features], dtype=torch.long)
-            dataset = TensorDataset(
-                all_input_ids,
+            # dataset = TensorDataset(
+            #     all_input_ids,
+            #     all_input_mask,
+            #     all_segment_ids,
+            #     all_start_positions,
+            #     all_end_positions,
+            #     all_cls_index,
+            #     all_p_mask,
+            #     all_labels,
+            # )
+            dataset = [all_input_ids,
                 all_input_mask,
                 all_segment_ids,
                 all_start_positions,
                 all_end_positions,
                 all_cls_index,
                 all_p_mask,
-                all_labels,
-            )
+                all_labels]
+
 
         if output_examples:
             return dataset, examples, features
         return dataset
 
     def train_model(
-        self, train_data, output_dir=False, show_running_loss=True, args=None, eval_data=None, verbose=True
+        self, train_data, test_data_raw, ontology, slot_meta, out_dir, filename, output_dir=False, show_running_loss=True, args=None, eval_data=None, verbose=True
     ):
         """
         Trains the model using 'train_data'
@@ -578,7 +441,7 @@ class QuestionAnsweringModel:
         os.makedirs(output_dir, exist_ok=True)
 
         global_step, tr_loss = self.train(
-            train_data, output_dir, show_running_loss=show_running_loss, eval_data=eval_data,
+            train_data, test_data_raw, ontology, slot_meta, out_dir, filename, output_dir, show_running_loss=show_running_loss, eval_data=eval_data,
         )
 
         model_to_save = self.model.module if hasattr(self.model, "module") else self.model
@@ -588,7 +451,7 @@ class QuestionAnsweringModel:
 
         logger.info(" Training of {} model complete. Saved to {}.".format(self.args["model_type"], output_dir))
 
-    def train(self, train_data_raw, output_dir, show_running_loss=True, eval_data=None, verbose=True):
+    def train(self, train_data_raw, test_data_raw, ontology, slot_meta, out_dir, filename, output_dir, show_running_loss=True, eval_data=None, verbose=True):
         """
         Trains the model on train_dataset.
 
@@ -599,14 +462,16 @@ class QuestionAnsweringModel:
         model = self.model
         args = self.args
 
-        train_data = self.generate_train_data(train_data_raw)
-        train_dataset = self.load_and_cache_examples(train_data)
+        # train_data = self.generate_train_data(train_data_raw)
+        # train_dataset = self.load_and_cache_examples(train_data)
 
         tb_writer = SummaryWriter(logdir=args["tensorboard_dir"])
-        train_sampler = RandomSampler(train_dataset)
-        train_dataloader = DataLoader(train_dataset, sampler=train_sampler, batch_size=args["train_batch_size"])
+        # train_sampler = RandomSampler(train_dataset)
+        # train_dataloader = DataLoader(train_dataset, sampler=train_sampler, batch_size=args["train_batch_size"])
 
-        t_total = len(train_dataloader) // args["gradient_accumulation_steps"] * args["num_train_epochs"]
+        # t_total = len(train_data_raw) // args["gradient_accumulation_steps"] * args["num_train_epochs"]
+        # t_total = len(train_data_raw) // args["train_batch_size"] * args["num_train_epochs"]
+        t_total = len(train_data_raw) * args["num_train_epochs"]
 
         no_decay = ["bias", "LayerNorm.weight"]
         optimizer_grouped_parameters = [
@@ -684,11 +549,20 @@ class QuestionAnsweringModel:
                 epochs_trained -= 1
                 continue
             # epoch_iterator = tqdm(train_dataloader, desc="Iteration")
-            for step, batch in enumerate(tqdm(train_dataloader, desc="Current iteration", disable=args["silent"])):
+            for step in trange(len(train_data_raw), desc="Current iteration", disable=args["silent"]):
+            # for step, idx in enumerate(trange(len(train_data_raw) // args["train_batch_size"], desc="Current iteration", disable=args["silent"])):
+            #     if step == 1:
+            #         break
+
                 if steps_trained_in_current_epoch > 0:
                     steps_trained_in_current_epoch -= 1
                     continue
-                batch = tuple(t.to(device) for t in batch)
+
+                train_batch = [train_data_raw[step]]
+                train_data = self.generate_train_data(train_batch)
+                train_dataset = self.load_and_cache_examples(train_data)
+
+                batch = tuple(t.to(device) for t in train_dataset)
 
                 inputs = self._get_inputs_dict(batch)
 
@@ -863,6 +737,10 @@ class QuestionAnsweringModel:
                         self._save_model(args["best_model_dir"], optimizer, scheduler, model=model, results=results)
                         early_stopping_counter = 0
 
+            eval_res, res_per_domain, pred = self.evaluate2(test_data_raw, ontology, slot_meta, 0)
+            save_result_to_file(out_dir + "/" + filename + ".res", eval_res, res_per_domain)
+            json.dump(pred, open('%s.pred' % (out_dir + "/" + filename), 'w'))
+
         return global_step, tr_loss / global_step
 
     def generate_train_data(self, train_data_raw):
@@ -898,9 +776,157 @@ class QuestionAnsweringModel:
 
             train_data.append({"context": context,
                                "qas": qas})
-            # break
 
         return train_data
+
+    def evaluate2(self, test_data_raw, ontology, slot_meta, epoch):
+        op2id = {'delete': 0, 'update': 1, 'dontcare': 2, 'carryover': 3, 'yes': 4, 'no': 5}
+
+        id2op = {v: k for k, v in op2id.items()}
+
+        slot_turn_acc, joint_acc, slot_F1_pred, slot_F1_count = 0, 0, 0, 0
+        final_joint_acc, final_count, final_slot_F1_pred, final_slot_F1_count = 0, 0, 0, 0
+        op_acc, op_F1, op_F1_count = 0, {k: 0 for k in op2id}, {k: 0 for k in op2id}
+        all_op_F1_count = {k: 0 for k in op2id}
+
+        tp_dic = {k: 0 for k in op2id}
+        fn_dic = {k: 0 for k in op2id}
+        fp_dic = {k: 0 for k in op2id}
+        wall_times = []
+        results = {}
+
+        memo_state = {}
+
+        for step in tqdm(range(len(test_data_raw)), desc="Evaluation"):
+            instance = test_data_raw[step]
+            # context = instance.dialog_history + instance.turn_utter
+            context = instance.turn_utter
+
+            qas = []
+            for idx, slot in enumerate(ontology):
+                did = "%s_t%d_s%d" % (instance.id, instance.turn_id, idx)
+                qas.append({'id': did,
+                            'label': 'carryover',
+                            'question': slot.replace("-", " ")})
+
+            test_data = [{"context": context, "qas": qas}]
+
+            gold_slot_value = {'-'.join(ii.split('-')[:-1]): ii.split('-')[-1] for ii in instance.gold_state}
+            gold_op = instance.op_labels
+            # for j, slot in enumerate(slot_meta):
+            #     gold_op.append("carryover" if slot not in gold_slot_value else "update")
+
+
+            start = time.perf_counter()
+            # prediction
+            # test_data = self.model.load_and_cache_examples(test_data)
+            # self.model.predict()
+            # print(test_data)
+            answers, outputs = self.predict(test_data)
+
+            pred_op = [id2op[_id] for _id in to_list(torch.argmax(outputs[0], 1))]
+
+            end = time.perf_counter()
+            wall_times.append(end - start)
+
+            # slot prediction
+            # pred_op = ['none' if len(pred['answer']) == 0 else "update" for pred in outputs]
+
+            # # value prediction
+            pred_state = memo_state[instance.id] if instance.id in memo_state else {}
+
+            for op, slot, answer in zip(pred_op, slot_meta, answers):
+                if op == "carryover":
+                    continue
+                elif op == "delete":
+                    # avoid problem
+                    if slot in pred_state:
+                        del pred_state[slot]
+                elif op == "update":
+                    pred_state[slot] = answer['answer']
+                else:
+                    pred_state[slot] = op
+            memo_state[instance.id] = pred_state
+
+            # convert dict to set
+            pred_state = {key + "-" + pred_state[key] for key in pred_state}
+            gold_state = instance.gold_state
+
+            if set(pred_state) == set(gold_state):
+                joint_acc += 1
+            key = str(instance.id) + '_' + str(instance.turn_id)
+
+            results[key] = [list(pred_state), gold_state]
+
+            # Compute prediction slot accuracy
+            temp_acc = compute_acc(set(gold_state), set(pred_state), slot_meta)
+            slot_turn_acc += temp_acc
+
+            # Compute prediction F1 score
+            temp_f1, temp_r, temp_p, count = compute_prf(gold_state, pred_state)
+            slot_F1_pred += temp_f1
+            slot_F1_count += count
+
+            # Compute operation accuracy
+            temp_acc = sum([1 if p == g else 0 for p, g in zip(pred_op, gold_op)]) / len(pred_op)
+            op_acc += temp_acc
+
+            if instance.is_last_turn:
+                final_count += 1
+                if set(pred_state) == set(gold_state):
+                    final_joint_acc += 1
+                final_slot_F1_pred += temp_f1
+                final_slot_F1_count += count
+
+            # Compute operation F1 score
+            for p, g in zip(pred_op, gold_op):
+                all_op_F1_count[g] += 1
+                if p == g:
+                    tp_dic[g] += 1
+                    op_F1_count[g] += 1
+                else:
+                    fn_dic[g] += 1
+                    fp_dic[p] += 1
+    #
+        joint_acc_score = joint_acc / len(test_data_raw)
+        turn_acc_score = slot_turn_acc / len(test_data_raw)
+        slot_F1_score = slot_F1_pred / slot_F1_count
+        op_acc_score = op_acc / len(test_data_raw)
+        final_joint_acc_score = final_joint_acc / final_count
+        final_slot_F1_score = final_slot_F1_pred / final_slot_F1_count
+        latency = np.mean(wall_times) * 1000
+        op_F1_score = {}
+        for k in op2id.keys():
+            tp = tp_dic[k]
+            fn = fn_dic[k]
+            fp = fp_dic[k]
+            precision = tp / (tp + fp) if (tp + fp) != 0 else 0
+            recall = tp / (tp + fn) if (tp + fn) != 0 else 0
+            F1 = 2 * precision * recall / float(precision + recall) if (precision + recall) != 0 else 0
+            op_F1_score[k] = F1
+
+        # print("------------------------------")
+        print("Epoch %d joint accuracy : " % epoch, joint_acc_score)
+        print("Epoch %d slot turn accuracy : " % epoch, turn_acc_score)
+        print("Epoch %d slot turn F1: " % epoch, slot_F1_score)
+        print("Epoch %d op accuracy : " % epoch, op_acc_score)
+        print("Epoch %d op F1 : " % epoch, op_F1_score)
+        print("Epoch %d op hit count : " % epoch, op_F1_count)
+        print("Epoch %d op all count : " % epoch, all_op_F1_count)
+        print("Final Joint Accuracy : ", final_joint_acc_score)
+        print("Final slot turn F1 : ", final_slot_F1_score)
+        print("Latency Per Prediction : %f ms" % latency)
+        print("-----------------------------\n")
+        res_per_domain = per_domain_join_accuracy(results, slot_meta)
+        #
+        scores = {'epoch': epoch, 'joint_acc_score': joint_acc_score,
+                  'turn_acc_score': turn_acc_score, 'slot_F1_score': slot_F1_score,
+                  'op_acc_score': op_acc_score, 'op_F1_score': op_F1_score, 'op_F1_count': op_F1_count,
+                  'all_op_F1_count': all_op_F1_count,
+                  'final_joint_acc_score': final_joint_acc_score, 'final_slot_F1_score': final_slot_F1_score,
+                  'latency': latency}
+
+        return scores, res_per_domain, results
 
     def eval_model(self, eval_data, output_dir=None, verbose=False):
         """

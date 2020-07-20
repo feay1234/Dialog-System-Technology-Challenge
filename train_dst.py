@@ -100,14 +100,11 @@ def main(args):
     best_score = {'epoch': float("-inf"), 'joint_acc_score': float("-inf"), 'op_acc': float("-inf"),
                   'final_slot_f1': float("-inf")}
 
-    # best_epoch = 0
-    # for epoch in range(args.n_epochs):
+    dst.model.train_model(train_data_raw, test_data_raw, ontology, slot_meta, args.out_dir, args.filename, show_running_loss=True)
 
-    dst.model.train_model(train_data_raw, show_running_loss=True)
-
-    eval_res, res_per_domain, pred = dst.evaluate(test_data_raw, ontology, slot_meta, 0)
-    save_result_to_file(args.out_dir + "/" + args.filename + ".res", eval_res, res_per_domain)
-    json.dump(pred, open('%s.pred' % (args.out_dir + "/" + args.filename), 'w'))
+    # eval_res, res_per_domain, pred = dst.evaluate(test_data_raw, ontology, slot_meta, 0)
+    # save_result_to_file(args.out_dir + "/" + args.filename + ".res", eval_res, res_per_domain)
+    # json.dump(pred, open('%s.pred' % (args.out_dir + "/" + args.filename), 'w'))
 
         # if (epoch + 1) % args.eval_epoch == 0:
         #
@@ -147,7 +144,7 @@ if __name__ == "__main__":
     parser.add_argument("--random_seed", default=42, type=int)
     parser.add_argument("--num_workers", default=4, type=int)
     # parser.add_argument("--batch_size", default=32, type=int)
-    parser.add_argument("--batch_size", default=30, type=int)
+    parser.add_argument("--batch_size", default=32, type=int)
     parser.add_argument("--enc_warmup", default=0.1, type=float)
     parser.add_argument("--dec_warmup", default=0.1, type=float)
     parser.add_argument("--enc_lr", default=4e-5, type=float)
